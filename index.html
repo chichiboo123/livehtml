@@ -17,8 +17,8 @@
   <!-- ===== 헤더 ===== -->
   <header class="app-header">
     <div class="brand">
-      <span class="brand-logo"><span class="material-symbols-outlined">code</span></span>
-      <h1 class="brand-name">Live HTML</h1>
+      <span class="brand-logo"><span class="material-symbols-outlined">code</span><span class="live-dot" aria-hidden="true"></span></span>
+      <h1 class="brand-name"><em>Live</em> HTML</h1>
     </div>
 
     <div class="header-actions">
@@ -48,7 +48,7 @@
     <!-- 코드 입력창 -->
     <section class="pane code-pane" aria-label="HTML 코드 입력">
       <div class="pane-toolbar">
-        <span class="pane-title"><span class="material-symbols-outlined">code_blocks</span>HTML 코드</span>
+        <span class="pane-title"><span class="material-symbols-outlined">code_blocks</span><span class="pt-text">HTML 코드</span></span>
         <div class="pane-tools">
           <button id="btnUpload" class="btn btn-tertiary btn-sm">
             <span class="material-symbols-outlined">upload_file</span><span class="btn-label">업로드</span>
@@ -61,9 +61,12 @@
           </button>
         </div>
       </div>
-      <textarea id="codeInput" spellcheck="false" autocomplete="off"
-        placeholder="여기에 HTML 코드를 붙여넣으면 오른쪽에 바로 보여요.&#10;&#10;파일 업로드, 클립보드 붙여넣기도 가능해요.&#10;HTML 파일을 화면에 끌어다 놓아도 돼요!"></textarea>
-      <div class="code-statusbar"><span id="codeStat">0자</span></div>
+      <div class="code-editor">
+        <div class="line-numbers" id="lineNumbers" aria-hidden="true">1</div>
+        <textarea id="codeInput" spellcheck="false" autocomplete="off" wrap="off"
+          placeholder="여기에 HTML 코드를 붙여넣으면 오른쪽에 바로 보여요.&#10;&#10;파일 업로드, 클립보드 붙여넣기도 가능해요.&#10;HTML 파일을 화면에 끌어다 놓아도 돼요!"></textarea>
+      </div>
+      <div class="code-statusbar"><span id="codeStat">0자</span><span id="lineStat">1줄</span></div>
     </section>
 
     <div class="gutter" id="gutter" role="separator" aria-label="패널 크기 조절"></div>
@@ -71,7 +74,7 @@
     <!-- 실시간 결과 확인창 -->
     <section class="pane preview-pane" aria-label="실시간 미리보기">
       <div class="pane-toolbar">
-        <span class="pane-title"><span class="material-symbols-outlined">visibility</span>실시간 미리보기</span>
+        <span class="pane-title"><span class="material-symbols-outlined">visibility</span><span class="pt-text">실시간 미리보기</span></span>
         <div class="pane-tools">
           <div class="mode-toggle" role="group" aria-label="모드 선택">
             <button id="modeEdit" class="mode-btn active"><span class="material-symbols-outlined">edit</span>편집</button>
@@ -159,6 +162,44 @@
           요소를 누르면 선택, 두 번 누르면 글자 수정, 끌면 이동해요
         </div>
       </div>
+
+      <!-- 삽입 버튼 (FAB) -->
+      <button class="insert-fab" id="insertFab" title="요소 추가" aria-label="요소 추가">
+        <span class="material-symbols-outlined">add</span>
+      </button>
+
+      <!-- 삽입 패널 -->
+      <div class="insert-panel" id="insertPanel" hidden>
+        <div class="insert-head">
+          <strong>추가하기</strong>
+          <button class="btn btn-icon" id="insertClose" aria-label="닫기"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="insert-body">
+          <div class="insert-group-title">텍스트</div>
+          <div class="insert-row">
+            <button class="ins-btn" data-ins="heading"><span class="ins-h1">제목</span></button>
+            <button class="ins-btn" data-ins="subheading"><span class="ins-h2">부제목</span></button>
+            <button class="ins-btn" data-ins="body-text"><span class="ins-p">본문</span></button>
+            <button class="ins-btn" data-ins="text-box"><span class="ins-box">텍스트 상자</span></button>
+          </div>
+          <div class="insert-group-title">도형</div>
+          <div class="insert-row">
+            <button class="ins-btn" data-ins="rect" title="사각형"><span class="shape rect"></span></button>
+            <button class="ins-btn" data-ins="rounded" title="둥근 사각형"><span class="shape rounded"></span></button>
+            <button class="ins-btn" data-ins="circle" title="원"><span class="shape circle"></span></button>
+            <button class="ins-btn" data-ins="triangle" title="삼각형"><span class="shape triangle"></span></button>
+            <button class="ins-btn" data-ins="line" title="선"><span class="shape line"></span></button>
+          </div>
+          <div class="insert-group-title">이미지</div>
+          <div class="insert-row">
+            <button class="ins-btn wide" data-ins="image">
+              <span class="material-symbols-outlined">add_photo_alternate</span>내 기기에서 이미지 올리기
+            </button>
+          </div>
+          <div class="insert-group-title">이모지</div>
+          <div class="emoji-grid" id="emojiGrid"><!-- JS로 생성 --></div>
+        </div>
+      </div>
     </section>
   </main>
 
@@ -193,9 +234,25 @@
           <span class="material-symbols-outlined arrow">chevron_right</span>
         </button>
         <div class="dl-divider"><span>PNG 이미지</span></div>
+        <div class="dl-modes" id="dlModes">
+          <label class="dl-mode">
+            <input type="radio" name="pngMode" value="each" checked />
+            <span class="material-symbols-outlined">filter_none</span>
+            <span class="dl-mode-text"><strong>페이지별로 저장</strong><small>여러 장이면 ZIP으로 묶어요</small></span>
+          </label>
+          <label class="dl-mode">
+            <input type="radio" name="pngMode" value="merge" />
+            <span class="material-symbols-outlined">calendar_view_day</span>
+            <span class="dl-mode-text"><strong>한 장으로 저장</strong><small>선택한 페이지를 세로로 이어붙여요</small></span>
+          </label>
+        </div>
+        <div class="png-pages-head">
+          <span>페이지 선택</span>
+          <button class="btn btn-tertiary btn-sm" id="pngToggleAll">전체 해제</button>
+        </div>
         <div class="png-pages" id="pngPages"><!-- 페이지 목록 (JS) --></div>
         <button class="btn btn-primary btn-lg btn-block" id="dlPng">
-          <span class="material-symbols-outlined">photo_library</span>선택한 페이지 PNG 저장
+          <span class="material-symbols-outlined">photo_library</span><span id="dlPngLabel">PNG 저장</span>
         </button>
       </div>
     </div>
@@ -203,6 +260,7 @@
 
   <input type="file" id="fileInput" accept=".html,.htm,text/html" hidden />
   <input type="file" id="imgInput" accept="image/*" hidden />
+  <input type="file" id="insertImgInput" accept="image/*" hidden />
   <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
   <div class="drop-overlay" id="dropOverlay" hidden>
     <span class="material-symbols-outlined">place_item</span>

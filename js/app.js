@@ -8,6 +8,8 @@
   const $ = (sel) => document.querySelector(sel);
 
   const codeInput = $("#codeInput");
+  const lineNumbers = $("#lineNumbers");
+  const lineStat = $("#lineStat");
   const iframe = $("#preview");
   const previewCanvas = $("#previewCanvas");
   const previewViewport = $("#previewViewport");
@@ -17,6 +19,7 @@
   const zoomSelect = $("#zoomSelect");
   const fileInput = $("#fileInput");
   const imgInput = $("#imgInput");
+  const insertImgInput = $("#insertImgInput");
   const codeStat = $("#codeStat");
   const fontBtn = $("#fontBtn");
   const fontNameEl = $("#fontName");
@@ -24,8 +27,11 @@
   const fontSearch = $("#fontSearch");
   const fontList = $("#fontList");
   const fontSizeInput = $("#fontSizeInput");
+  const insertFab = $("#insertFab");
+  const insertPanel = $("#insertPanel");
 
   const H2C_SRC = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+  const JSZIP_SRC = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
   const AUTOSAVE_KEY = "livehtml:autosave";
   const SNAP_DIST = 6; // 가운데 정렬 스냅 허용 거리(px)
 
@@ -33,7 +39,10 @@
   let selectedEl = null;        // iframe 안에서 선택된 요소
   let editingEl = null;         // 텍스트 편집 중인 요소
   let zoomMode = "fit";
+  let currentScale = 1;
+  let lastContentH = 0;
   let hintShown = false;
+  let pages = [];               // 감지된 페이지 요소들
 
   /* ---------------- 유틸 ---------------- */
   const debounce = (fn, ms) => {
@@ -58,6 +67,17 @@
     a.download = filename;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+
+  function loadScriptOnce(src, check) {
+    if (check()) return Promise.resolve(check());
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = () => resolve(check());
+      s.onerror = () => reject(new Error(`script load failed: ${src}`));
+      document.head.appendChild(s);
+    });
   }
 
   /* ============================================================
@@ -126,7 +146,7 @@
     ["Caveat", "카베아트", "cursive"],
   ];
 
-  // value: null → font-family 제거(원래 글꼴), css → 전용 스타일시트 주입
+  // family: null → font-family 제거(원래 글꼴), css → 전용 스타일시트 주입
   const FONT_GROUPS = [
     { title: "기본", fonts: [
       { family: null, label: "원래 글꼴로", fallback: "" },
@@ -213,8 +233,7 @@
 
   function currentFontFamily(el) {
     const inline = el.style.fontFamily || iframe.contentWindow.getComputedStyle(el).fontFamily || "";
-    const first = inline.split(",")[0].trim().replace(/^['"]|['"]$/g, "");
-    return first;
+    return inline.split(",")[0].trim().replace(/^['"]|['"]$/g, "");
   }
 
   function updateFontChip() {
@@ -240,6 +259,7 @@
 
   function openFontPanel() {
     if (!selectedEl) return;
+    closeInsertPanel();
     loadFontPreviews();
     buildFontList(fontSearch.value);
     fontPanel.hidden = false;
@@ -255,6 +275,9 @@
   document.addEventListener("pointerdown", (e) => {
     if (!fontPanel.hidden && !fontPanel.contains(e.target) && !fontBtn.contains(e.target)) {
       closeFontPanel();
+    }
+    if (!insertPanel.hidden && !insertPanel.contains(e.target) && !insertFab.contains(e.target)) {
+      closeInsertPanel();
     }
   });
 
@@ -305,23 +328,51 @@
     if (record) pushHistory(code);
   }
 
+  let lastLineCount = -1;
+  function updateLineNumbers() {
+    const lines = codeInput.value.split("\n").length;
+    if (lines !== lastLineCount) {
+      lastLineCount = lines;
+      let buf = "";
+      for (let i = 1; i <= lines; i++) buf += i + "\n";
+      lineNumbers.textContent = buf;
+      lineStat.textContent = `${lines.toLocaleString()}줄`;
+    }
+    lineNumbers.scrollTop = codeInput.scrollTop;
+  }
+  codeInput.addEventListener("scroll", () => { lineNumbers.scrollTop = codeInput.scrollTop; });
+
   function updateStat() {
     codeStat.textContent = `${codeInput.value.length.toLocaleString()}자`;
+    updateLineNumbers();
     autosave();
   }
 
   function renderPreview() {
     clearSelection();
+    pages = [];
     const code = codeInput.value.trim();
     document.body.classList.toggle("has-content", !!code);
     iframe.srcdoc = code || "<!DOCTYPE html><html><body></body></html>";
   }
+
+  const contentResizeObserver = new ResizeObserver(() => {
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return;
+    const h = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight);
+    // 이미지·글꼴 로딩으로 내용 높이가 바뀌면 배율 다시 계산
+    if (Math.abs(h - lastContentH) > 2) applyZoomDebounced();
+  });
 
   iframe.addEventListener("load", () => {
     const doc = iframe.contentDocument;
     if (!doc) return;
     injectEditorStyle(doc);
     attachPreviewEvents(doc);
+    try {
+      contentResizeObserver.disconnect();
+      if (doc.body) contentResizeObserver.observe(doc.body);
+    } catch (_) {}
     requestAnimationFrame(() => { applyZoom(); setTimeout(applyZoom, 250); });
     if (editMode && codeInput.value.trim() && !hintShown) {
       hintShown = true;
@@ -338,9 +389,23 @@
       [data-lh-hover] { outline: 1.5px dashed rgba(36,107,235,.55) !important; outline-offset: 2px; cursor: default; }
       [data-lh-selected] { outline: 2px solid #246BEB !important; outline-offset: 2px; cursor: move; touch-action: none; }
       [data-lh-selected][contenteditable="true"] { cursor: text; outline-style: dashed !important; }
-      .__lh_guide { position: fixed; background: #FF2E92; z-index: 2147483647; pointer-events: none; }
+      [data-lh-page] { outline: 1px dashed rgba(109,120,130,.55); outline-offset: 5px; }
+      .__lh_guide { position: fixed; background: #FF2E92; z-index: 2147483646; pointer-events: none; }
       .__lh_guide.v { width: 1.5px; }
       .__lh_guide.h { height: 1.5px; }
+      .__lh_pagelabel {
+        position: absolute; z-index: 2147483000; pointer-events: none;
+        background: rgba(30,33,36,.72); color: #fff;
+        font: 700 11px/1 Pretendard, 'Apple SD Gothic Neo', sans-serif;
+        padding: 4px 9px; border-radius: 99px;
+      }
+      .__lh_handle {
+        position: fixed; z-index: 2147483647;
+        background: #fff; border: 2px solid #246BEB; border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0,0,0,.25); touch-action: none;
+      }
+      .__lh_handle.nw, .__lh_handle.se { cursor: nwse-resize; }
+      .__lh_handle.ne, .__lh_handle.sw { cursor: nesw-resize; }
     `;
     (doc.head || doc.documentElement).appendChild(st);
   }
@@ -352,10 +417,11 @@
     const doc = iframe.contentDocument;
     if (!doc || !doc.documentElement) return "";
     const clone = doc.documentElement.cloneNode(true);
-    clone.querySelectorAll("#__lh_style, script[data-lh], .__lh_guide").forEach((e) => e.remove());
-    clone.querySelectorAll("[data-lh-hover], [data-lh-selected], [contenteditable]").forEach((e) => {
+    clone.querySelectorAll("#__lh_style, script[data-lh], .__lh_ui").forEach((e) => e.remove());
+    clone.querySelectorAll("[data-lh-hover], [data-lh-selected], [data-lh-page], [contenteditable]").forEach((e) => {
       e.removeAttribute("data-lh-hover");
       e.removeAttribute("data-lh-selected");
+      e.removeAttribute("data-lh-page");
       e.removeAttribute("contenteditable");
       e.removeAttribute("spellcheck");
     });
@@ -372,15 +438,76 @@
     codeInput.value = html;
     updateStat();
     pushHistoryDebounced(html);
+    updateHandles();
     applyZoomDebounced();
   }
   const syncFromPreviewDebounced = debounce(syncFromPreview, 350);
 
   /* ============================================================
-   * 미리보기 인라인 편집 (선택 / 드래그 / 텍스트)
+   * 페이지 감지 + 페이지 구분 표시
+   * ============================================================ */
+  function detectPages() {
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return [];
+    const body = doc.body;
+    const big = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width >= 150 && r.height >= 150;
+    };
+    const selectors = [
+      "[data-page]", ".page", ".slide", ".cardnews", ".card-news",
+      ".card", ".poster", ".frame", "section",
+    ];
+    for (const sel of selectors) {
+      let els = [...body.querySelectorAll(sel)].filter(big);
+      els = els.filter((el) => !els.some((o) => o !== el && o.contains(el)));
+      if (els.length >= 2) return els;
+      if (els.length === 1 && sel !== "section" && sel !== ".card") return els;
+    }
+    const kids = [...body.children].filter(
+      (el) => big(el) && !["SCRIPT", "STYLE", "LINK"].includes(el.tagName) &&
+        !String(el.className).includes("__lh_")
+    );
+    if (kids.length >= 2) return kids;
+    return [body];
+  }
+
+  function clearPageMarkers() {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    try {
+      doc.querySelectorAll("[data-lh-page]").forEach((e) => e.removeAttribute("data-lh-page"));
+      doc.querySelectorAll(".__lh_pagelabel").forEach((e) => e.remove());
+    } catch (_) {}
+  }
+
+  /** 편집 모드에서 페이지마다 점선 테두리 + '페이지 N' 라벨 표시 */
+  function refreshPageMarkers() {
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return;
+    clearPageMarkers();
+    pages = detectPages();
+    if (!editMode || !codeInput.value.trim()) return;
+    const win = iframe.contentWindow;
+    pages.forEach((el, i) => {
+      if (el === doc.body) return;
+      el.setAttribute("data-lh-page", String(i + 1));
+      const r = el.getBoundingClientRect();
+      const label = doc.createElement("div");
+      label.className = "__lh_ui __lh_pagelabel";
+      label.textContent = `페이지 ${i + 1}`;
+      label.style.left = (r.left + win.scrollX) + "px";
+      label.style.top = Math.max(2, r.top + win.scrollY - 26) + "px";
+      doc.body.appendChild(label);
+    });
+  }
+
+  /* ============================================================
+   * 미리보기 인라인 편집 (선택 / 드래그 / 크기 조절 / 텍스트)
    * ============================================================ */
   function isEditableTarget(el) {
     if (!el || !el.tagName) return false;
+    if (el.closest && el.closest(".__lh_ui")) return false;
     const tag = el.tagName.toUpperCase();
     return tag !== "HTML" && tag !== "BODY" && tag !== "SCRIPT" && tag !== "STYLE" && tag !== "LINK" && tag !== "META";
   }
@@ -394,6 +521,7 @@
     editToolbar.hidden = true;
     closeFontPanel();
     removeGuides();
+    updateHandles();
   }
 
   function selectElement(el) {
@@ -407,6 +535,7 @@
     closeFontPanel();
     updateFontChip();
     updateFontSizeInput();
+    updateHandles();
   }
 
   function updateFontSizeInput() {
@@ -421,6 +550,7 @@
     el.setAttribute("contenteditable", "true");
     el.setAttribute("spellcheck", "false");
     el.focus();
+    updateHandles();
   }
 
   function endTextEdit(sync = true) {
@@ -429,6 +559,18 @@
     editingEl.removeAttribute("spellcheck");
     editingEl = null;
     if (sync) syncFromPreview();
+    updateHandles();
+  }
+
+  function selectAllTextIn(el) {
+    try {
+      const win = iframe.contentWindow;
+      const range = iframe.contentDocument.createRange();
+      range.selectNodeContents(el);
+      const sel = win.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (_) {}
   }
 
   /* ---- 드래그 이동 (translate를 인라인 transform에 합성) ---- */
@@ -453,7 +595,34 @@
     if (!selectedEl || editingEl) return;
     const t = getTranslate(selectedEl);
     setTranslate(selectedEl, t.x + dx, t.y + dy);
+    updateHandles();
     syncFromPreviewDebounced();
+  }
+
+  /* ---- 크기 조절 핸들 (선택 요소 네 모서리) ---- */
+  function updateHandles() {
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return;
+    const want = selectedEl && !editingEl && editMode;
+    const existing = [...doc.querySelectorAll(".__lh_handle")];
+    if (!want) { existing.forEach((h) => h.remove()); return; }
+    const r = selectedEl.getBoundingClientRect();
+    const size = Math.max(12, Math.min(28, Math.round(14 / (currentScale || 1))));
+    const pos = {
+      nw: [r.left, r.top], ne: [r.right, r.top],
+      sw: [r.left, r.bottom], se: [r.right, r.bottom],
+    };
+    ["nw", "ne", "sw", "se"].forEach((k) => {
+      let h = existing.find((x) => x.classList.contains(k));
+      if (!h) {
+        h = doc.createElement("div");
+        h.className = `__lh_ui __lh_handle ${k}`;
+        doc.body.appendChild(h);
+      }
+      h.style.width = h.style.height = size + "px";
+      h.style.left = (pos[k][0] - size / 2) + "px";
+      h.style.top = (pos[k][1] - size / 2) + "px";
+    });
   }
 
   /* ---- 가운데 정렬 가이드선 ---- */
@@ -461,7 +630,7 @@
     let g = doc.querySelector(`.__lh_guide.${kind}`);
     if (!g) {
       g = doc.createElement("div");
-      g.className = `__lh_guide ${kind}`;
+      g.className = `__lh_ui __lh_guide ${kind}`;
       doc.body.appendChild(g);
     }
     if (kind === "v") {
@@ -484,9 +653,10 @@
   function attachPreviewEvents(doc) {
     let hoverEl = null;
     let drag = null;
+    let resize = null;
 
     doc.addEventListener("mouseover", (e) => {
-      if (!editMode || editingEl) return;
+      if (!editMode || editingEl || drag || resize) return;
       if (hoverEl) hoverEl.removeAttribute("data-lh-hover");
       hoverEl = null;
       if (isEditableTarget(e.target) && e.target !== selectedEl) {
@@ -500,10 +670,12 @@
 
     // 링크 이동 차단 (작업 내용을 잃지 않도록)
     doc.addEventListener("click", (e) => {
+      if (e.target.closest && e.target.closest(".__lh_ui")) { e.preventDefault(); return; }
       const a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
       if (a) e.preventDefault();
       if (!editMode) return;
       e.preventDefault();
+      closeInsertPanel();
       if (editingEl) {
         if (e.target === editingEl || editingEl.contains(e.target)) return;
         endTextEdit();
@@ -522,9 +694,31 @@
       startTextEdit(e.target);
     });
 
-    // 선택된 요소 드래그 이동 + 가운데 정렬 스냅
     doc.addEventListener("pointerdown", (e) => {
       if (!editMode || editingEl) return;
+
+      // 1) 크기 조절 핸들
+      const handle = e.target.closest && e.target.closest(".__lh_handle");
+      if (handle && selectedEl) {
+        const er = selectedEl.getBoundingClientRect();
+        const cs = doc.defaultView.getComputedStyle(selectedEl);
+        const isImg = selectedEl.tagName.toUpperCase() === "IMG";
+        const textOnly = !isImg && !selectedEl.children.length && !!selectedEl.textContent.trim();
+        resize = {
+          corner: ["nw", "ne", "sw", "se"].find((c) => handle.classList.contains(c)),
+          sx: e.clientX, sy: e.clientY,
+          w: er.width, h: er.height,
+          fs: parseFloat(cs.fontSize) || 16,
+          t: getTranslate(selectedEl),
+          isImg, textOnly,
+        };
+        if (!textOnly && cs.display === "inline") selectedEl.style.display = "inline-block";
+        try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+        e.preventDefault();
+        return;
+      }
+
+      // 2) 선택된 요소 드래그 이동
       if (!selectedEl || (e.target !== selectedEl && !selectedEl.contains(e.target))) return;
       const start = getTranslate(selectedEl);
       const er = selectedEl.getBoundingClientRect();
@@ -543,13 +737,42 @@
     });
 
     doc.addEventListener("pointermove", (e) => {
+      // 크기 조절
+      if (resize && selectedEl) {
+        const fx = resize.corner.includes("e") ? 1 : -1;
+        const fy = resize.corner.includes("s") ? 1 : -1;
+        const newW = Math.max(20, resize.w + (e.clientX - resize.sx) * fx);
+        let newH = Math.max(20, resize.h + (e.clientY - resize.sy) * fy);
+        if (resize.textOnly) {
+          // 텍스트는 캔바처럼 모서리 조절 시 글자 크기를 비율로 변경
+          selectedEl.style.fontSize = Math.max(6, Math.round(resize.fs * (newW / resize.w))) + "px";
+          updateFontSizeInput();
+        } else if (resize.isImg) {
+          newH = newW * (resize.h / resize.w); // 이미지는 비율 유지
+          selectedEl.style.width = Math.round(newW) + "px";
+          selectedEl.style.height = "auto";
+        } else {
+          selectedEl.style.width = Math.round(newW) + "px";
+          selectedEl.style.height = Math.round(newH) + "px";
+        }
+        if (!resize.textOnly) {
+          // 서쪽/북쪽 핸들은 반대편 모서리가 고정된 것처럼 보이게 이동 보정
+          let tx = resize.t.x, ty = resize.t.y;
+          if (resize.corner.includes("w")) tx += resize.w - newW;
+          if (resize.corner.includes("n")) ty += resize.h - newH;
+          setTranslate(selectedEl, tx, ty);
+        }
+        updateHandles();
+        return;
+      }
+
+      // 이동 + 가운데 정렬 스냅
       if (!drag || !selectedEl) return;
       let dx = e.clientX - drag.sx;
       let dy = e.clientY - drag.sy;
       if (!drag.moved && Math.hypot(dx, dy) < 3) return;
       drag.moved = true;
 
-      // 부모 컨테이너 가운데에 가까워지면 스냅 + 가이드선 표시
       const cx = drag.c0x + dx;
       const cy = drag.c0y + dy;
       let snapX = false, snapY = false;
@@ -557,6 +780,7 @@
       if (Math.abs(cy - drag.pcy) < SNAP_DIST) { dy += drag.pcy - cy; snapY = true; }
 
       setTranslate(selectedEl, drag.bx + dx, drag.by + dy);
+      updateHandles();
 
       if (snapX) showGuide(doc, "v", drag.pr, drag.pcx);
       else doc.querySelector(".__lh_guide.v")?.remove();
@@ -564,13 +788,14 @@
       else doc.querySelector(".__lh_guide.h")?.remove();
     });
 
-    const endDrag = () => {
+    const endPointer = () => {
       removeGuides();
+      if (resize) { resize = null; syncFromPreview(); }
       if (drag && drag.moved) syncFromPreview();
       drag = null;
     };
-    doc.addEventListener("pointerup", endDrag);
-    doc.addEventListener("pointercancel", endDrag);
+    doc.addEventListener("pointerup", endPointer);
+    doc.addEventListener("pointercancel", endPointer);
 
     // contenteditable 입력 동기화
     doc.addEventListener("input", () => syncFromPreviewDebounced());
@@ -649,6 +874,7 @@
       case "duplicate": {
         const copy = el.cloneNode(true);
         copy.removeAttribute("data-lh-selected");
+        copy.removeAttribute("data-lh-page");
         el.after(copy);
         const t = getTranslate(copy);
         setTranslate(copy, t.x + 16, t.y + 16);
@@ -658,6 +884,7 @@
       }
       case "reset-pos":
         setTranslate(el, 0, 0);
+        updateHandles();
         toast("원래 위치로 되돌렸어요", "restart_alt");
         break;
       case "delete":
@@ -680,7 +907,10 @@
 
   $("#colorPicker").addEventListener("input", (e) => {
     if (!selectedEl) return;
-    selectedEl.style.color = e.target.value;
+    const isShape = selectedEl.tagName.toUpperCase() !== "IMG" &&
+      !selectedEl.children.length && !selectedEl.textContent.trim();
+    if (isShape) selectedEl.style.backgroundColor = e.target.value;
+    else selectedEl.style.color = e.target.value;
     syncFromPreviewDebounced();
   });
 
@@ -698,13 +928,169 @@
   });
 
   /* ============================================================
+   * 삽입 (텍스트 / 도형 / 이모지 / 이미지) — 캔바식
+   * ============================================================ */
+  const EMOJIS = [
+    "😀","😄","😆","😊","🥰","😍","🤩","😎","🥳","🤗","🤔","🤭","😴","🥺","😭","😱","😡","🤯","😇","🥹",
+    "👍","👎","👏","🙏","🤝","💪","✌️","🤟","👋","🫶",
+    "❤️","🧡","💛","💚","💙","💜","🖤","🤍","💖","💕",
+    "✨","⭐","🌟","💫","🔥","💯","🎉","🎊","🎈","🎁",
+    "🏆","🥇","🥈","🥉","🎯","📌","📣","💡","📚","✏️",
+    "🎵","🎶","🎤","🎭","🎨","🎬","⚽","🏀","🍀","🌈",
+    "☀️","🌙","⛅","🌸","🌻","🌺","🍎","🍕","🎂","☕",
+  ];
+
+  let emojiGridBuilt = false;
+  function buildEmojiGrid() {
+    if (emojiGridBuilt) return;
+    emojiGridBuilt = true;
+    const grid = $("#emojiGrid");
+    EMOJIS.forEach((em) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = em;
+      b.title = "이모지 추가";
+      b.addEventListener("click", () => insertEmoji(em));
+      grid.appendChild(b);
+    });
+  }
+
+  function openInsertPanel() {
+    if (!codeInput.value.trim()) {
+      toast("먼저 HTML을 불러와 주세요", "info", true);
+      return;
+    }
+    closeFontPanel();
+    buildEmojiGrid();
+    insertPanel.hidden = false;
+  }
+  function closeInsertPanel() { insertPanel.hidden = true; }
+
+  insertFab.addEventListener("click", () => {
+    insertPanel.hidden ? openInsertPanel() : closeInsertPanel();
+  });
+  $("#insertClose").addEventListener("click", closeInsertPanel);
+
+  /** 삽입 대상 페이지: 선택 요소가 속한 페이지 → 화면 중앙에 보이는 페이지 → body */
+  function insertTarget() {
+    const doc = iframe.contentDocument;
+    const pgs = (pages.length ? pages : detectPages()).filter((p) => p && p !== doc.body);
+    if (selectedEl) {
+      const host = pgs.find((p) => p.contains(selectedEl));
+      if (host) return host;
+    }
+    if (pgs.length) {
+      const vp = previewViewport.getBoundingClientRect();
+      const cv = previewCanvas.getBoundingClientRect();
+      const centerY = (vp.top + vp.height / 2 - cv.top) / (currentScale || 1);
+      let best = pgs[0], bestDist = Infinity;
+      pgs.forEach((p) => {
+        const r = p.getBoundingClientRect();
+        const d = Math.abs(r.top + r.height / 2 - centerY);
+        if (d < bestDist) { best = p; bestDist = d; }
+      });
+      return best;
+    }
+    return doc.body;
+  }
+
+  function insertIntoPage(el, { edit = false } = {}) {
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return;
+    const target = insertTarget();
+    const win = iframe.contentWindow;
+    if (win.getComputedStyle(target).position === "static") target.style.position = "relative";
+    target.appendChild(el);
+    // 페이지 가운데에 배치
+    const tr = target.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
+    el.style.left = Math.max(0, Math.round((tr.width - er.width) / 2)) + "px";
+    el.style.top = Math.max(0, Math.round((tr.height - er.height) / 2)) + "px";
+    selectElement(el);
+    if (edit) {
+      startTextEdit(el);
+      selectAllTextIn(el);
+    }
+    syncFromPreview();
+  }
+
+  function makeDiv(cssText, text) {
+    const div = iframe.contentDocument.createElement("div");
+    div.style.cssText = cssText;
+    if (text) div.textContent = text;
+    return div;
+  }
+
+  const INSERTERS = {
+    "heading": () => insertIntoPage(makeDiv(
+      "position:absolute;margin:0;font-size:40px;font-weight:800;color:#1E2124;white-space:nowrap;",
+      "제목을 입력하세요"), { edit: true }),
+    "subheading": () => insertIntoPage(makeDiv(
+      "position:absolute;margin:0;font-size:26px;font-weight:700;color:#1E2124;white-space:nowrap;",
+      "부제목을 입력하세요"), { edit: true }),
+    "body-text": () => insertIntoPage(makeDiv(
+      "position:absolute;margin:0;font-size:16px;font-weight:400;color:#1E2124;width:60%;line-height:1.6;",
+      "내용을 입력하세요"), { edit: true }),
+    "text-box": () => insertIntoPage(makeDiv(
+      "position:absolute;margin:0;padding:12px 24px;background:#246BEB;color:#ffffff;font-size:20px;font-weight:700;border-radius:10px;white-space:nowrap;",
+      "텍스트 상자"), { edit: true }),
+    "rect": () => insertIntoPage(makeDiv("position:absolute;width:120px;height:120px;background:#246BEB;")),
+    "rounded": () => insertIntoPage(makeDiv("position:absolute;width:120px;height:120px;background:#246BEB;border-radius:16px;")),
+    "circle": () => insertIntoPage(makeDiv("position:absolute;width:120px;height:120px;background:#246BEB;border-radius:50%;")),
+    "triangle": () => insertIntoPage(makeDiv("position:absolute;width:130px;height:120px;background:#246BEB;clip-path:polygon(50% 0, 100% 100%, 0 100%);")),
+    "line": () => insertIntoPage(makeDiv("position:absolute;width:200px;height:6px;background:#1E2124;border-radius:3px;")),
+    "image": () => insertImgInput.click(),
+  };
+
+  insertPanel.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-ins]");
+    if (!btn) return;
+    const fn = INSERTERS[btn.dataset.ins];
+    if (!fn) return;
+    fn();
+    if (btn.dataset.ins !== "image") closeInsertPanel();
+  });
+
+  function insertEmoji(em) {
+    insertIntoPage(makeDiv("position:absolute;margin:0;font-size:64px;line-height:1;", em));
+    // 이모지는 연속 삽입할 수 있도록 패널을 닫지 않음
+  }
+
+  insertImgInput.addEventListener("change", () => {
+    const file = insertImgInput.files[0];
+    insertImgInput.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const doc = iframe.contentDocument;
+      const img = doc.createElement("img");
+      img.src = String(reader.result);
+      img.style.cssText = "position:absolute;height:auto;";
+      const apply = () => {
+        const target = insertTarget();
+        const tw = target.getBoundingClientRect().width || 400;
+        img.style.width = Math.round(Math.min(tw * 0.5, img.naturalWidth || tw * 0.5)) + "px";
+        insertIntoPage(img);
+        closeInsertPanel();
+        toast("이미지를 추가했어요. 모서리를 끌면 크기를 조절해요", "add_photo_alternate");
+      };
+      if (img.decode) img.decode().then(apply).catch(apply);
+      else { img.onload = apply; }
+    };
+    reader.readAsDataURL(file);
+  });
+
+  /* ============================================================
    * 모드 / 배율
    * ============================================================ */
   function setEditMode(on) {
     editMode = on;
     $("#modeEdit").classList.toggle("active", on);
     $("#modeView").classList.toggle("active", !on);
-    if (!on) clearSelection();
+    document.body.classList.toggle("mode-view", !on);
+    if (!on) { clearSelection(); closeInsertPanel(); }
+    refreshPageMarkers();
+    updateHandles();
   }
   $("#modeEdit").addEventListener("click", () => setEditMode(true));
   $("#modeView").addEventListener("click", () => setEditMode(false));
@@ -733,11 +1119,16 @@
       80
     );
     iframe.style.height = contentH + "px";
+    lastContentH = contentH;
 
     const scale = zoomMode === "fit" ? Math.min(1, baseW / contentW) : parseInt(zoomMode, 10) / 100;
+    currentScale = scale;
     iframe.style.transform = `scale(${scale})`;
     previewCanvas.style.width = contentW * scale + "px";
     previewCanvas.style.height = contentH * scale + "px";
+
+    refreshPageMarkers();
+    updateHandles();
   }
   const applyZoomDebounced = debounce(applyZoom, 300);
   window.addEventListener("resize", applyZoomDebounced);
@@ -883,34 +1274,10 @@
     toast("HTML 파일을 저장했어요", "download_done");
   }
 
-  /* ---- 다운로드 모달 + 페이지 감지 ---- */
+  /* ---- 다운로드 모달 ---- */
   const downloadModal = $("#downloadModal");
-
-  function detectPages() {
-    const doc = iframe.contentDocument;
-    if (!doc || !doc.body) return [];
-    const body = doc.body;
-    const big = (el) => {
-      const r = el.getBoundingClientRect();
-      return r.width >= 150 && r.height >= 150;
-    };
-    const selectors = [
-      "[data-page]", ".page", ".slide", ".cardnews", ".card-news",
-      ".card", ".poster", ".frame", "section",
-    ];
-    for (const sel of selectors) {
-      let els = [...body.querySelectorAll(sel)].filter(big);
-      els = els.filter((el) => !els.some((o) => o !== el && o.contains(el)));
-      if (els.length >= 2) return els;
-      if (els.length === 1 && sel !== "section" && sel !== ".card") return els;
-    }
-    const kids = [...body.children].filter(
-      (el) => big(el) && !["SCRIPT", "STYLE", "LINK"].includes(el.tagName)
-    );
-    if (kids.length >= 2) return kids;
-    return [body];
-  }
-
+  const dlPngBtn = $("#dlPng");
+  const dlPngLabel = $("#dlPngLabel");
   let detectedPages = [];
 
   function openDownloadModal() {
@@ -929,6 +1296,10 @@
         <span class="dim">${Math.round(r.width)} × ${Math.round(r.height)}px</span>`;
       list.appendChild(label);
     });
+    $("#pngToggleAll").textContent = "전체 해제";
+    // 페이지가 1개뿐이면 '한 장으로' 모드 의미가 없으므로 숨김
+    $("#dlModes").style.display = detectedPages.length > 1 ? "" : "none";
+    $(".png-pages-head").style.display = detectedPages.length > 1 ? "" : "none";
     downloadModal.hidden = false;
   }
 
@@ -943,12 +1314,18 @@
     downloadHTML();
     closeDownloadModal();
   });
+  $("#pngToggleAll").addEventListener("click", () => {
+    const boxes = [...$("#pngPages").querySelectorAll("input")];
+    const allChecked = boxes.every((b) => b.checked);
+    boxes.forEach((b) => { b.checked = !allChecked; });
+    $("#pngToggleAll").textContent = allChecked ? "전체 선택" : "전체 해제";
+  });
 
-  /* ---- PNG 내보내기 (html2canvas를 iframe 안에 주입) ---- */
+  /* ---- PNG 내보내기 ---- */
   function ensureHtml2Canvas() {
+    const win = iframe.contentWindow;
+    if (win.html2canvas) return Promise.resolve(win.html2canvas);
     return new Promise((resolve, reject) => {
-      const win = iframe.contentWindow;
-      if (win.html2canvas) return resolve(win.html2canvas);
       const doc = iframe.contentDocument;
       const s = doc.createElement("script");
       s.src = H2C_SRC;
@@ -959,6 +1336,9 @@
     });
   }
 
+  const canvasToBlob = (canvas) =>
+    new Promise((res) => canvas.toBlob(res, "image/png"));
+
   $("#dlPng").addEventListener("click", async () => {
     const checked = [...$("#pngPages").querySelectorAll("input:checked")]
       .map((c) => detectedPages[+c.dataset.idx])
@@ -967,28 +1347,68 @@
       toast("저장할 페이지를 선택해 주세요", "info", true);
       return;
     }
-    const btn = $("#dlPng");
-    btn.disabled = true;
+    const mode = (document.querySelector("input[name='pngMode']:checked") || {}).value || "each";
+    dlPngBtn.disabled = true;
+    clearPageMarkers(); // 점선·라벨이 이미지에 찍히지 않도록 제거
     try {
       const h2c = await ensureHtml2Canvas();
+      const canvases = [];
       for (let i = 0; i < checked.length; i++) {
-        const canvas = await h2c(checked[i], {
-          scale: 2,
-          useCORS: true,
-          allowTaint: false,
-          logging: false,
-        });
-        const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
-        downloadBlob(blob, checked.length > 1 ? `live-html_p${i + 1}.png` : "live-html.png");
-        await new Promise((r) => setTimeout(r, 350));
+        dlPngLabel.textContent = `변환 중… (${i + 1}/${checked.length})`;
+        canvases.push(await h2c(checked[i], {
+          scale: 2, useCORS: true, allowTaint: false, logging: false,
+        }));
       }
-      toast(`PNG ${checked.length}장을 저장했어요`, "photo_library");
+
+      if (mode === "merge" && canvases.length > 1) {
+        // 세로로 이어붙여 한 장으로
+        const width = Math.max(...canvases.map((c) => c.width));
+        const height = canvases.reduce((sum, c) => sum + c.height, 0);
+        const merged = document.createElement("canvas");
+        merged.width = width;
+        merged.height = height;
+        const ctx = merged.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        let y = 0;
+        canvases.forEach((c) => {
+          ctx.drawImage(c, Math.round((width - c.width) / 2), y);
+          y += c.height;
+        });
+        downloadBlob(await canvasToBlob(merged), "live-html.png");
+        toast("한 장으로 이어붙인 PNG를 저장했어요", "photo_library");
+      } else if (canvases.length === 1) {
+        downloadBlob(await canvasToBlob(canvases[0]), "live-html.png");
+        toast("PNG를 저장했어요", "photo_library");
+      } else {
+        // 여러 장은 ZIP으로 묶어 한 번에
+        dlPngLabel.textContent = "압축 중…";
+        try {
+          const JSZip = await loadScriptOnce(JSZIP_SRC, () => window.JSZip);
+          const zip = new JSZip();
+          for (let i = 0; i < canvases.length; i++) {
+            zip.file(`live-html_p${i + 1}.png`, await canvasToBlob(canvases[i]));
+          }
+          const blob = await zip.generateAsync({ type: "blob" });
+          downloadBlob(blob, "live-html_png.zip");
+          toast(`PNG ${canvases.length}장을 ZIP으로 저장했어요`, "folder_zip");
+        } catch (_) {
+          // ZIP 라이브러리를 못 불러오면 낱장으로 순차 저장
+          for (let i = 0; i < canvases.length; i++) {
+            downloadBlob(await canvasToBlob(canvases[i]), `live-html_p${i + 1}.png`);
+            await new Promise((r) => setTimeout(r, 350));
+          }
+          toast(`PNG ${canvases.length}장을 저장했어요`, "photo_library");
+        }
+      }
       closeDownloadModal();
     } catch (err) {
       console.error(err);
       toast("이미지 변환에 실패했어요. 외부 이미지가 차단됐을 수 있어요", "error", true);
     } finally {
-      btn.disabled = false;
+      dlPngBtn.disabled = false;
+      dlPngLabel.textContent = "PNG 저장";
+      refreshPageMarkers();
     }
   });
 
@@ -1041,6 +1461,7 @@
       if (!inField) { e.preventDefault(); applyHistory(1); }
     } else if (e.key === "Escape") {
       if (!fontPanel.hidden) closeFontPanel();
+      else if (!insertPanel.hidden) closeInsertPanel();
       else if (!downloadModal.hidden) closeDownloadModal();
       else clearSelection();
     } else if (e.key === "Delete" && selectedEl && !inField) {
@@ -1093,15 +1514,15 @@
 
   <div class="page page-2">
     <h2>이렇게 사용해요</h2>
-    <div class="tip"><strong>① 한 번 클릭 = 선택</strong><span>위 도구 막대로 글꼴·크기·색·정렬을 바꿔요</span></div>
+    <div class="tip"><strong>① 한 번 클릭 = 선택</strong><span>도구 막대로 글꼴·크기·색을, 모서리 핸들로 크기를 바꿔요</span></div>
     <div class="tip"><strong>② 두 번 클릭 = 글자 수정</strong><span>코드를 몰라도 내용을 바로 고칠 수 있어요</span></div>
-    <div class="tip"><strong>③ 끌기 = 위치 이동</strong><span>가운데에 가까워지면 분홍 가이드선에 착 붙어요</span></div>
+    <div class="tip"><strong>③ 오른쪽 아래 + 버튼</strong><span>텍스트·도형·이모지·이미지를 추가할 수 있어요</span></div>
   </div>
 
   <div class="page page-3">
     <p class="big">🎉</p>
     <h1 style="font-size:36px;">완성되면 다운로드!</h1>
-    <p class="sub">수정한 HTML 코드를 복사·저장하거나<br>페이지별 PNG 이미지로 받을 수 있어요.</p>
+    <p class="sub">HTML은 물론, 페이지별 PNG나<br>한 장으로 이어붙인 PNG로도 받을 수 있어요.</p>
   </div>
 </body>
 </html>`;
