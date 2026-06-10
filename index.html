@@ -30,14 +30,11 @@
           <span class="material-symbols-outlined">redo</span>
         </button>
       </div>
-      <button id="btnShare" class="btn btn-tertiary">
-        <span class="material-symbols-outlined">share</span><span class="btn-label">공유</span>
-      </button>
-      <button id="btnCopyCode" class="btn btn-secondary">
-        <span class="material-symbols-outlined">content_copy</span><span class="btn-label">HTML 복사</span>
+      <button id="btnHelp" class="btn btn-icon" title="사용 방법" aria-label="사용 방법">
+        <span class="material-symbols-outlined">help</span>
       </button>
       <button id="btnDownload" class="btn btn-primary">
-        <span class="material-symbols-outlined">download</span><span class="btn-label">다운로드</span>
+        <span class="material-symbols-outlined">download</span><span class="btn-label">저장 · 공유</span>
       </button>
     </div>
   </header>
@@ -55,6 +52,9 @@
           </button>
           <button id="btnPaste" class="btn btn-tertiary btn-sm">
             <span class="material-symbols-outlined">content_paste</span><span class="btn-label">붙여넣기</span>
+          </button>
+          <button id="btnCopyCode" class="btn btn-tertiary btn-sm">
+            <span class="material-symbols-outlined">content_copy</span><span class="btn-label">복사</span>
           </button>
           <button id="btnClear" class="btn btn-tertiary btn-sm">
             <span class="material-symbols-outlined">delete_sweep</span><span class="btn-label">지우기</span>
@@ -108,6 +108,10 @@
           <label class="tool-btn color-btn" title="글자 색">
             <span class="material-symbols-outlined">format_color_text</span>
             <input type="color" id="colorPicker" />
+          </label>
+          <label class="tool-btn color-btn" title="배경(채우기) 색">
+            <span class="material-symbols-outlined">format_color_fill</span>
+            <input type="color" id="fillPicker" />
           </label>
         </div>
         <div class="tool-group">
@@ -197,6 +201,7 @@
             </button>
           </div>
           <div class="insert-group-title">이모지</div>
+          <div class="emoji-tabs" id="emojiTabs"><!-- JS로 생성 --></div>
           <div class="emoji-grid" id="emojiGrid"><!-- JS로 생성 --></div>
         </div>
       </div>
@@ -224,13 +229,23 @@
   <div class="modal-backdrop" id="downloadModal" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dlTitle">
       <div class="modal-head">
-        <h3 id="dlTitle"><span class="material-symbols-outlined">download</span>다운로드</h3>
+        <h3 id="dlTitle"><span class="material-symbols-outlined">download</span>저장 · 공유</h3>
         <button class="btn btn-icon" id="dlClose" aria-label="닫기"><span class="material-symbols-outlined">close</span></button>
       </div>
       <div class="modal-body">
         <button class="dl-option" id="dlHtml">
           <span class="dl-ic"><span class="material-symbols-outlined">html</span></span>
-          <span class="dl-text"><strong>HTML 파일</strong><small>수정된 코드를 .html 파일로 저장해요</small></span>
+          <span class="dl-text"><strong>HTML 파일로 저장</strong><small>수정된 코드를 .html 파일로 받아요</small></span>
+          <span class="material-symbols-outlined arrow">chevron_right</span>
+        </button>
+        <button class="dl-option" id="dlCopy">
+          <span class="dl-ic"><span class="material-symbols-outlined">content_copy</span></span>
+          <span class="dl-text"><strong>HTML 코드 복사</strong><small>클립보드에 복사해서 붙여넣어 써요</small></span>
+          <span class="material-symbols-outlined arrow">chevron_right</span>
+        </button>
+        <button class="dl-option" id="dlShare">
+          <span class="dl-ic"><span class="material-symbols-outlined">share</span></span>
+          <span class="dl-text"><strong>공유하기</strong><small>HTML 파일을 다른 앱으로 바로 보내요</small></span>
           <span class="material-symbols-outlined arrow">chevron_right</span>
         </button>
         <div class="dl-divider"><span>PNG 이미지</span></div>
@@ -254,6 +269,34 @@
         <button class="btn btn-primary btn-lg btn-block" id="dlPng">
           <span class="material-symbols-outlined">photo_library</span><span id="dlPngLabel">PNG 저장</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 도움말 모달 ===== -->
+  <div class="modal-backdrop" id="helpModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="modal-head">
+        <h3 id="helpTitle"><span class="material-symbols-outlined">help</span>사용 방법</h3>
+        <button class="btn btn-icon" id="helpClose" aria-label="닫기"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <div class="modal-body help-body">
+        <div class="help-step">
+          <span class="help-num">1</span>
+          <div><strong>📥 HTML 불러오기</strong><p>업로드나 붙여넣기로 HTML을 넣으면 오른쪽에 바로 보여요.</p></div>
+        </div>
+        <div class="help-step">
+          <span class="help-num">2</span>
+          <div><strong>👆 화면에서 바로 고치기</strong><p>한 번 누르면 선택, 두 번 누르면 글자 수정! 끌면 움직이고, 모서리 점을 끌면 크기가 변해요.</p></div>
+        </div>
+        <div class="help-step">
+          <span class="help-num">3</span>
+          <div><strong>➕ 새 요소 더하기</strong><p>오른쪽 아래 파란 + 버튼으로 글자·도형·이모지·사진을 넣어요.</p></div>
+        </div>
+        <div class="help-step">
+          <span class="help-num">4</span>
+          <div><strong>💾 저장하고 공유하기</strong><p>위의 [저장 · 공유] 버튼에서 HTML 파일이나 PNG 이미지로 받아요.</p></div>
+        </div>
       </div>
     </div>
   </div>

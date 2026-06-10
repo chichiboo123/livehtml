@@ -394,11 +394,12 @@
       .__lh_guide.v { width: 1.5px; }
       .__lh_guide.h { height: 1.5px; }
       .__lh_pagelabel {
-        position: absolute; z-index: 2147483000; pointer-events: none;
+        position: absolute; z-index: 2147483000; pointer-events: auto; cursor: pointer;
         background: rgba(30,33,36,.72); color: #fff;
         font: 700 11px/1 Pretendard, 'Apple SD Gothic Neo', sans-serif;
         padding: 4px 9px; border-radius: 99px;
       }
+      .__lh_pagelabel:hover { background: #246BEB; }
       .__lh_handle {
         position: fixed; z-index: 2147483647;
         background: #fff; border: 2px solid #246BEB; border-radius: 50%;
@@ -496,8 +497,10 @@
       const label = doc.createElement("div");
       label.className = "__lh_ui __lh_pagelabel";
       label.textContent = `페이지 ${i + 1}`;
+      label.title = "누르면 페이지가 선택돼요 (배경색 변경 가능)";
       label.style.left = (r.left + win.scrollX) + "px";
       label.style.top = Math.max(2, r.top + win.scrollY - 26) + "px";
+      label.addEventListener("click", () => selectElement(el));
       doc.body.appendChild(label);
     });
   }
@@ -907,10 +910,14 @@
 
   $("#colorPicker").addEventListener("input", (e) => {
     if (!selectedEl) return;
-    const isShape = selectedEl.tagName.toUpperCase() !== "IMG" &&
-      !selectedEl.children.length && !selectedEl.textContent.trim();
-    if (isShape) selectedEl.style.backgroundColor = e.target.value;
-    else selectedEl.style.color = e.target.value;
+    selectedEl.style.color = e.target.value;
+    syncFromPreviewDebounced();
+  });
+
+  // 배경(채우기) 색 — 페이지·도형·텍스트 상자 모두 적용 (그라데이션도 단색으로 교체)
+  $("#fillPicker").addEventListener("input", (e) => {
+    if (!selectedEl) return;
+    selectedEl.style.background = e.target.value;
     syncFromPreviewDebounced();
   });
 
@@ -930,22 +937,63 @@
   /* ============================================================
    * 삽입 (텍스트 / 도형 / 이모지 / 이미지) — 캔바식
    * ============================================================ */
-  const EMOJIS = [
-    "😀","😄","😆","😊","🥰","😍","🤩","😎","🥳","🤗","🤔","🤭","😴","🥺","😭","😱","😡","🤯","😇","🥹",
-    "👍","👎","👏","🙏","🤝","💪","✌️","🤟","👋","🫶",
-    "❤️","🧡","💛","💚","💙","💜","🖤","🤍","💖","💕",
-    "✨","⭐","🌟","💫","🔥","💯","🎉","🎊","🎈","🎁",
-    "🏆","🥇","🥈","🥉","🎯","📌","📣","💡","📚","✏️",
-    "🎵","🎶","🎤","🎭","🎨","🎬","⚽","🏀","🍀","🌈",
-    "☀️","🌙","⛅","🌸","🌻","🌺","🍎","🍕","🎂","☕",
+  const EMOJI_CATEGORIES = [
+    { name: "표정", icon: "😀", list: [
+      "😀","😃","😄","😁","😆","😅","😂","🤣","🙂","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","🥲","😋",
+      "😛","😜","🤪","😝","🤗","🤭","🤫","🤔","🫡","😐","😶","🙄","😏","😌","😔","😪","🤤","😴","😷","🤒",
+      "🤕","🤢","🤮","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","🙁","😮","😯","😲","😳",
+      "🥺","🥹","😦","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬",
+      "😈","💀","👻","👽","🤖","💩","😺","😸","😹","😻",
+    ]},
+    { name: "사람", icon: "👋", list: [
+      "👋","🤚","🖐️","✋","🖖","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👈","👉","👆","👇","☝️","👍",
+      "👎","✊","👊","🤛","🤜","👏","🙌","🫶","👐","🤲","🤝","🙏","💪","🧠","👀","👁️","👄","🦷","👂","👃",
+      "👶","🧒","👦","👧","🧑","👨","👩","🧓","👴","👵","👮","🕵️","💂","👷","🤴","👸","🦸","🦹","🧙","🧚",
+      "🎅","🤶","🙇","🙋","🙆","🙅","💁","🤷","🤦","💃","🕺","🧍","🧎","🏃","🚶","🤸","🧘","👪","👫","👭",
+    ]},
+    { name: "하트", icon: "❤️", list: [
+      "❤️","🧡","💛","💚","💙","💜","🤎","🖤","🤍","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","♥️",
+      "💯","💢","💥","💫","💦","💨","💬","💭","💤","✨","⭐","🌟","🔥","🎉","🎊","🎈","🎁","🎀","🪄","🌈",
+    ]},
+    { name: "자연", icon: "🐶", list: [
+      "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦",
+      "🐤","🦆","🦅","🦉","🦇","🐺","🐴","🦄","🐝","🦋","🐌","🐞","🐜","🐢","🐍","🦖","🦕","🐙","🦀","🐠",
+      "🐟","🐬","🐳","🦈","🐊","🐘","🦒","🦓","🦍","🐎","🐑","🐐","🦌","🐕","🐈","🕊️","🐇","🦝","🦦","🦥",
+      "🌵","🎄","🌲","🌳","🌴","🌱","🌿","☘️","🍀","🍁","🍂","🍃","🌷","🌹","🌺","🌸","🌼","🌻","🌞","🌝",
+      "🌕","🌙","☀️","⛅","☁️","⚡","❄️","⛄","🌊","💧",
+    ]},
+    { name: "음식", icon: "🍎", list: [
+      "🍏","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑",
+      "🥦","🥬","🥒","🌶️","🌽","🥕","🥔","🍠","🥐","🍞","🥖","🥨","🧀","🥚","🍳","🥞","🧇","🥓","🍗","🍖",
+      "🌭","🍔","🍟","🍕","🥪","🌮","🌯","🥙","🍜","🍲","🍣","🍱","🍙","🍚","🍛","🍤","🍦","🍧","🍨","🍩",
+      "🍪","🎂","🍰","🧁","🥧","🍫","🍬","🍭","🍮","🍯","🥛","🍼","☕","🍵","🧃","🥤","🧋","🍹","🍷","🥂",
+    ]},
+    { name: "활동", icon: "⚽", list: [
+      "⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱","🏓","🏸","🏒","⛳","🏹","🎣","🥊","🥋","🎽","⛸️",
+      "🛹","🛼","🚴","🏊","⛷️","🏂","🏋️","🤺","🏇","⛹️","🏌️","🧗","🏄","🚣","🎯","🎮","🕹️","🎲","🧩","♟️",
+      "🎭","🎨","🎬","🎤","🎧","🎼","🎹","🥁","🎷","🎺","🎸","🪕","🎻","🎪","🤹","🎳","🎰","🚗","✈️","🚀",
+    ]},
+    { name: "사물", icon: "📚", list: [
+      "⌚","📱","💻","⌨️","🖥️","🖨️","🖱️","📷","📸","📹","🎥","📞","☎️","📺","📻","⏰","⌛","⏳","📡","🔋",
+      "🔌","💡","🔦","🕯️","🛒","💎","⚖️","🔧","🔨","⚙️","🧲","🧪","🧫","🧬","🔬","🔭","📚","📖","📒","📕",
+      "📗","📘","📙","📃","📜","📄","📰","📑","🔖","🏷️","✏️","✒️","🖊️","🖍️","📝","💼","📁","📂","📅","📆",
+      "📈","📉","📊","📋","📌","📍","📎","📏","📐","✂️","🔒","🔑","🎒","👑","🎓","🧸","🎺","🪅","🪩","🧮",
+    ]},
+    { name: "기호", icon: "✅", list: [
+      "✅","❌","⭕","❗","❓","‼️","⁉️","🚫","♻️","✳️","❇️","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪","🟥",
+      "🟧","🟨","🟩","🟦","🟪","⬛","⬜","🔶","🔷","🔸","🔹","🔺","🔻","💠","🔘","🏁","🚩","🎌","➕","➖",
+      "➗","✖️","💲","➡️","⬅️","⬆️","⬇️","↗️","↘️","↔️","🔄","🔝","🔙","🆕","🆓","🆒","🆗","🔅","🔆","📶",
+      "💮","🏆","🥇","🥈","🥉","🎖️","🏅","📣","📢","🔔",
+    ]},
   ];
 
-  let emojiGridBuilt = false;
-  function buildEmojiGrid() {
-    if (emojiGridBuilt) return;
-    emojiGridBuilt = true;
+  let emojiTabsBuilt = false;
+  let emojiTabIdx = 0;
+
+  function renderEmojiGrid() {
     const grid = $("#emojiGrid");
-    EMOJIS.forEach((em) => {
+    grid.innerHTML = "";
+    EMOJI_CATEGORIES[emojiTabIdx].list.forEach((em) => {
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = em;
@@ -953,6 +1001,26 @@
       b.addEventListener("click", () => insertEmoji(em));
       grid.appendChild(b);
     });
+  }
+
+  function buildEmojiGrid() {
+    if (!emojiTabsBuilt) {
+      emojiTabsBuilt = true;
+      const tabs = $("#emojiTabs");
+      EMOJI_CATEGORIES.forEach((cat, i) => {
+        const t = document.createElement("button");
+        t.type = "button";
+        t.className = "emoji-tab" + (i === 0 ? " active" : "");
+        t.textContent = `${cat.icon} ${cat.name}`;
+        t.addEventListener("click", () => {
+          emojiTabIdx = i;
+          tabs.querySelectorAll(".emoji-tab").forEach((x, j) => x.classList.toggle("active", j === i));
+          renderEmojiGrid();
+        });
+        tabs.appendChild(t);
+      });
+    }
+    renderEmojiGrid();
   }
 
   function openInsertPanel() {
@@ -1127,11 +1195,20 @@
     previewCanvas.style.width = contentW * scale + "px";
     previewCanvas.style.height = contentH * scale + "px";
 
+    if (zoomMode === "fit") previewViewport.scrollLeft = 0;
+
     refreshPageMarkers();
     updateHandles();
   }
   const applyZoomDebounced = debounce(applyZoom, 300);
   window.addEventListener("resize", applyZoomDebounced);
+  // 화면 회전: 일부 브라우저는 회전 후 resize가 늦거나 빠져서 배율이 어긋남
+  window.addEventListener("orientationchange", () => {
+    setTimeout(applyZoom, 400);
+    setTimeout(applyZoom, 900);
+  });
+  // 미리보기 영역 자체의 크기 변화를 직접 감지 (회전·패널 크기 조절 모두 대응)
+  new ResizeObserver(() => applyZoomDebounced()).observe(previewViewport);
 
   /* ============================================================
    * 입력: 타이핑 / 업로드 / 붙여넣기 / 지우기
@@ -1238,7 +1315,7 @@
     return false;
   }
 
-  $("#btnCopyCode").addEventListener("click", async () => {
+  async function copyCode() {
     if (!requireContent()) return;
     try {
       await navigator.clipboard.writeText(codeInput.value);
@@ -1248,9 +1325,9 @@
       document.execCommand("copy");
       toast("HTML 코드를 복사했어요", "content_copy");
     }
-  });
+  }
 
-  $("#btnShare").addEventListener("click", async () => {
+  async function shareCode() {
     if (!requireContent()) return;
     const file = new File([codeInput.value], "live-html.html", { type: "text/html" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1267,7 +1344,9 @@
     } catch (_) {
       toast("공유를 지원하지 않는 브라우저예요", "error", true);
     }
-  });
+  }
+
+  $("#btnCopyCode").addEventListener("click", copyCode);
 
   function downloadHTML() {
     downloadBlob(new Blob([codeInput.value], { type: "text/html;charset=utf-8" }), "live-html.html");
@@ -1313,6 +1392,24 @@
   $("#dlHtml").addEventListener("click", () => {
     downloadHTML();
     closeDownloadModal();
+  });
+  $("#dlCopy").addEventListener("click", async () => {
+    await copyCode();
+    closeDownloadModal();
+  });
+  $("#dlShare").addEventListener("click", async () => {
+    closeDownloadModal();
+    await shareCode();
+  });
+
+  /* ---- 도움말 ---- */
+  const helpModal = $("#helpModal");
+  function openHelp() { helpModal.hidden = false; }
+  function closeHelp() { helpModal.hidden = true; }
+  $("#btnHelp").addEventListener("click", openHelp);
+  $("#helpClose").addEventListener("click", closeHelp);
+  helpModal.addEventListener("click", (e) => {
+    if (e.target === helpModal) closeHelp();
   });
   $("#pngToggleAll").addEventListener("click", () => {
     const boxes = [...$("#pngPages").querySelectorAll("input")];
@@ -1463,6 +1560,7 @@
       if (!fontPanel.hidden) closeFontPanel();
       else if (!insertPanel.hidden) closeInsertPanel();
       else if (!downloadModal.hidden) closeDownloadModal();
+      else if (!helpModal.hidden) closeHelp();
       else clearSelection();
     } else if (e.key === "Delete" && selectedEl && !inField) {
       deleteSelected();
@@ -1542,4 +1640,11 @@
     renderPreview();
     pushHistory("");
   }
+  // 처음 방문이면 사용 방법을 한 번 보여줌
+  try {
+    if (!restored && !localStorage.getItem("livehtml:helpSeen")) {
+      localStorage.setItem("livehtml:helpSeen", "1");
+      setTimeout(openHelp, 700);
+    }
+  } catch (_) {}
 })();

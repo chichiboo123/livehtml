@@ -610,6 +610,36 @@ body.mode-view .insert-fab { display: none; }
 .shape.circle   { width: 26px; height: 26px; background: var(--c-primary); border-radius: 50%; }
 .shape.triangle { width: 28px; height: 26px; background: var(--c-primary); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .shape.line     { width: 30px; height: 4px;  background: var(--c-primary); border-radius: 2px; margin: 11px 0; }
+.emoji-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+}
+.emoji-tabs::-webkit-scrollbar { display: none; }
+.emoji-tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--c-border-light);
+  border-radius: 999px;
+  background: var(--c-surface);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-text-sub);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.emoji-tab.active {
+  background: var(--c-primary-soft);
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
 .emoji-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
@@ -735,6 +765,7 @@ body.mode-view .insert-fab { display: none; }
   transition: border-color .15s, background-color .15s;
 }
 .dl-option:hover { border-color: var(--c-primary); background: var(--c-primary-soft); }
+.dl-option + .dl-option { margin-top: 8px; }
 .dl-ic {
   width: 44px; height: 44px; flex: none;
   display: grid; place-items: center;
@@ -799,6 +830,22 @@ body.mode-view .insert-fab { display: none; }
 .png-page .dim { margin-left: auto; font-size: 12px; color: var(--c-text-sub); font-weight: 500; }
 .png-empty { font-size: 14px; color: var(--c-text-sub); text-align: center; padding: 12px; }
 
+/* ---- 도움말 ---- */
+.help-body { display: flex; flex-direction: column; gap: 14px; }
+.help-step { display: flex; gap: 12px; align-items: flex-start; }
+.help-num {
+  flex: none;
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  background: var(--c-primary);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 800;
+}
+.help-step strong { display: block; font-size: 15px; margin-bottom: 2px; }
+.help-step p { margin: 0; font-size: 14px; color: var(--c-text-sub); line-height: 1.55; }
+
 /* ============================================================
    토스트 / 드롭 오버레이
    ============================================================ */
@@ -855,8 +902,7 @@ body.mode-view .insert-fab { display: none; }
   .app-header { padding: 0 10px; gap: 6px; }
   .brand-name { font-size: 16px; }
   .header-actions { gap: 4px; }
-  .header-actions .btn-label { display: none; }
-  .header-actions .btn { padding: 0 10px; }
+  .header-actions .btn { padding: 0 12px; }
   .history-group { padding-right: 6px; margin-right: 0; }
 
   .app-main { position: relative; }
@@ -872,7 +918,6 @@ body.mode-view .insert-fab { display: none; }
   .pane-toolbar { padding: 0 8px; gap: 6px; }
   .preview-viewport { padding: 12px; }
   .toast-wrap { bottom: calc(var(--tabbar-h) + 44px); }
-  .pane-tools .btn-label { display: none; }
   .insert-fab { right: 12px; bottom: 12px; width: 48px; height: 48px; }
   .insert-panel { right: 12px; bottom: 68px; }
 }
@@ -883,4 +928,20 @@ body.mode-view .insert-fab { display: none; }
   .mode-btn { padding: 0 10px; }
   .zoom-select { max-width: 92px; }
   .brand { gap: 7px; }
+  .brand-name { font-size: 15px; }
+}
+
+/* 초소형 화면에서만 코드 도구 글자를 숨김 */
+@media (max-width: 380px) {
+  .pane-tools .btn-sm .btn-label { display: none; }
+}
+
+/* 터치 기기: 어린이·어르신도 누르기 쉽게 버튼을 크게 */
+@media (pointer: coarse) {
+  .tool-btn { width: 42px; height: 42px; }
+  .size-input { height: 36px; }
+  .emoji-grid button { height: 44px; font-size: 24px; }
+  .emoji-tab { height: 34px; font-size: 13px; }
+  .btn-sm { height: 36px; }
+  .tab-btn .material-symbols-outlined { font-size: 25px; }
 }
