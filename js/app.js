@@ -18,8 +18,16 @@
   const fileInput = $("#fileInput");
   const imgInput = $("#imgInput");
   const codeStat = $("#codeStat");
+  const fontBtn = $("#fontBtn");
+  const fontNameEl = $("#fontName");
+  const fontPanel = $("#fontPanel");
+  const fontSearch = $("#fontSearch");
+  const fontList = $("#fontList");
+  const fontSizeInput = $("#fontSizeInput");
 
   const H2C_SRC = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+  const AUTOSAVE_KEY = "livehtml:autosave";
+  const SNAP_DIST = 6; // 가운데 정렬 스냅 허용 거리(px)
 
   let editMode = true;          // 편집 모드 / 보기 모드
   let selectedEl = null;        // iframe 안에서 선택된 요소
@@ -53,6 +61,204 @@
   }
 
   /* ============================================================
+   * 글꼴 데이터 — Google Fonts 한글 전체 + 영문 일부 + Pretendard
+   * ============================================================ */
+  const PRETENDARD_CSS = "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css";
+  const PRETENDARD_GOV_CSS = "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-gov.min.css";
+
+  // [영문 패밀리명, 한글 표시명, 폴백]
+  const KOREAN_FONTS = [
+    ["Noto Sans KR", "노토 산스 (본고딕)", "sans-serif"],
+    ["Noto Serif KR", "노토 세리프 (본명조)", "serif"],
+    ["Nanum Gothic", "나눔고딕", "sans-serif"],
+    ["Nanum Myeongjo", "나눔명조", "serif"],
+    ["Nanum Pen Script", "나눔손글씨 펜", "cursive"],
+    ["Nanum Brush Script", "나눔손글씨 붓", "cursive"],
+    ["Nanum Gothic Coding", "나눔고딕코딩", "monospace"],
+    ["Gothic A1", "고딕 A1", "sans-serif"],
+    ["IBM Plex Sans KR", "IBM 플렉스 산스", "sans-serif"],
+    ["Gowun Dodum", "고운돋움", "sans-serif"],
+    ["Gowun Batang", "고운바탕", "serif"],
+    ["Hahmlet", "함렛", "serif"],
+    ["Black Han Sans", "블랙 한 산스", "sans-serif"],
+    ["Jua", "주아", "sans-serif"],
+    ["Do Hyeon", "도현", "sans-serif"],
+    ["Sunflower", "해바라기", "sans-serif"],
+    ["Stylish", "스타일리시", "sans-serif"],
+    ["Song Myung", "송명", "serif"],
+    ["Gugi", "구기", "cursive"],
+    ["Dongle", "동글", "sans-serif"],
+    ["Bagel Fat One", "베이글 팻 원", "cursive"],
+    ["Gasoek One", "가석 원", "sans-serif"],
+    ["Orbit", "오르빗", "sans-serif"],
+    ["Diphylleia", "산하엽", "serif"],
+    ["Moirai One", "모이라이 원", "cursive"],
+    ["Grandiflora One", "그란디플로라 원", "serif"],
+    ["Gaegu", "개구", "cursive"],
+    ["Gamja Flower", "감자꽃", "cursive"],
+    ["Hi Melody", "하이멜로디", "cursive"],
+    ["Poor Story", "푸어스토리", "cursive"],
+    ["Cute Font", "큐트폰트", "cursive"],
+    ["Single Day", "싱글데이", "cursive"],
+    ["Yeon Sung", "연성", "cursive"],
+    ["Kirang Haerang", "기랑해랑", "cursive"],
+    ["Dokdo", "독도", "cursive"],
+    ["East Sea Dokdo", "동해독도", "cursive"],
+    ["Black And White Picture", "흑백사진", "sans-serif"],
+  ];
+
+  const ENGLISH_FONTS = [
+    ["Inter", "인터", "sans-serif"],
+    ["Roboto", "로보토", "sans-serif"],
+    ["Open Sans", "오픈 산스", "sans-serif"],
+    ["Lato", "라토", "sans-serif"],
+    ["Montserrat", "몬세라트", "sans-serif"],
+    ["Poppins", "포핀스", "sans-serif"],
+    ["Raleway", "랄레웨이", "sans-serif"],
+    ["Oswald", "오스왈드", "sans-serif"],
+    ["Anton", "안톤", "sans-serif"],
+    ["Bebas Neue", "베바스 노이", "sans-serif"],
+    ["Playfair Display", "플레이페어", "serif"],
+    ["Merriweather", "메리웨더", "serif"],
+    ["Pacifico", "퍼시피코", "cursive"],
+    ["Lobster", "랍스터", "cursive"],
+    ["Dancing Script", "댄싱 스크립트", "cursive"],
+    ["Caveat", "카베아트", "cursive"],
+  ];
+
+  // value: null → font-family 제거(원래 글꼴), css → 전용 스타일시트 주입
+  const FONT_GROUPS = [
+    { title: "기본", fonts: [
+      { family: null, label: "원래 글꼴로", fallback: "" },
+      { family: "Pretendard", label: "프리텐다드", fallback: "sans-serif", css: PRETENDARD_CSS },
+      { family: "Pretendard GOV", label: "프리텐다드 GOV", fallback: "sans-serif", css: PRETENDARD_GOV_CSS },
+    ]},
+    { title: "한글 (Google Fonts)", fonts: KOREAN_FONTS.map(([f, l, fb]) => ({ family: f, label: l, fallback: fb })) },
+    { title: "영문 (Google Fonts)", fonts: ENGLISH_FONTS.map(([f, l, fb]) => ({ family: f, label: l, fallback: fb })) },
+  ];
+
+  const googleFontHref = (family) =>
+    `https://fonts.googleapis.com/css2?family=${family.replace(/ /g, "+")}&display=swap`;
+
+  function fontHref(font) {
+    return font.css || googleFontHref(font.family);
+  }
+
+  /** 문서(head)에 글꼴 스타일시트를 중복 없이 주입.
+   *  미리보기 iframe에 주입된 link는 그대로 직렬화되어
+   *  다운로드한 HTML에서도 글꼴이 유지된다. */
+  function ensureFontLink(doc, font) {
+    if (!font.family) return;
+    const href = fontHref(font);
+    if ([...doc.querySelectorAll("link[rel='stylesheet']")].some((l) => l.getAttribute("href") === href)) return;
+    const link = doc.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    (doc.head || doc.documentElement).appendChild(link);
+  }
+
+  /* ---- 글꼴 패널 ---- */
+  let fontPreviewLoaded = false;
+
+  function loadFontPreviews() {
+    if (fontPreviewLoaded) return;
+    fontPreviewLoaded = true;
+    const families = [...KOREAN_FONTS, ...ENGLISH_FONTS].map(([f]) => f);
+    for (let i = 0; i < families.length; i += 10) {
+      const chunk = families.slice(i, i + 10);
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://fonts.googleapis.com/css2?" +
+        chunk.map((f) => "family=" + f.replace(/ /g, "+")).join("&") + "&display=swap";
+      document.head.appendChild(link);
+    }
+  }
+
+  function buildFontList(query = "") {
+    const q = query.trim().toLowerCase();
+    fontList.innerHTML = "";
+    const current = selectedEl ? currentFontFamily(selectedEl) : "";
+    let count = 0;
+    FONT_GROUPS.forEach((group) => {
+      const matched = group.fonts.filter((f) => {
+        if (!q) return true;
+        return (f.family || "").toLowerCase().includes(q) || f.label.toLowerCase().includes(q);
+      });
+      if (!matched.length) return;
+      const title = document.createElement("div");
+      title.className = "font-group-title";
+      title.textContent = group.title;
+      fontList.appendChild(title);
+      matched.forEach((font) => {
+        count++;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "font-item" + (font.family && current === font.family ? " active" : "");
+        const preview = document.createElement("span");
+        preview.className = "fi-preview";
+        preview.textContent = font.family ? `${font.label} 가나다 Aa` : font.label;
+        if (font.family) preview.style.fontFamily = `'${font.family}', ${font.fallback}`;
+        const label = document.createElement("span");
+        label.className = "fi-label";
+        label.textContent = font.family || "";
+        btn.append(preview, label);
+        btn.addEventListener("click", () => applyFont(font));
+        fontList.appendChild(btn);
+      });
+    });
+    if (!count) {
+      fontList.innerHTML = `<div class="font-empty">'${query}'에 맞는 글꼴이 없어요</div>`;
+    }
+  }
+
+  function currentFontFamily(el) {
+    const inline = el.style.fontFamily || iframe.contentWindow.getComputedStyle(el).fontFamily || "";
+    const first = inline.split(",")[0].trim().replace(/^['"]|['"]$/g, "");
+    return first;
+  }
+
+  function updateFontChip() {
+    if (!selectedEl) return;
+    const fam = currentFontFamily(selectedEl);
+    const known = FONT_GROUPS.flatMap((g) => g.fonts).find((f) => f.family === fam);
+    fontNameEl.textContent = known ? known.label : (fam || "글꼴");
+  }
+
+  function applyFont(font) {
+    if (!selectedEl) return;
+    if (!font.family) {
+      selectedEl.style.removeProperty("font-family");
+    } else {
+      ensureFontLink(iframe.contentDocument, font);
+      selectedEl.style.fontFamily = `'${font.family}', ${font.fallback}`;
+    }
+    closeFontPanel();
+    updateFontChip();
+    syncFromPreview();
+    toast(`'${font.label}' 글꼴을 적용했어요`, "font_download");
+  }
+
+  function openFontPanel() {
+    if (!selectedEl) return;
+    loadFontPreviews();
+    buildFontList(fontSearch.value);
+    fontPanel.hidden = false;
+    // 모바일에서는 키보드가 바로 올라오지 않도록 데스크톱에서만 검색창 포커스
+    if (window.matchMedia("(hover: hover)").matches) fontSearch.focus();
+  }
+  function closeFontPanel() { fontPanel.hidden = true; }
+
+  fontBtn.addEventListener("click", () => {
+    fontPanel.hidden ? openFontPanel() : closeFontPanel();
+  });
+  fontSearch.addEventListener("input", () => buildFontList(fontSearch.value));
+  document.addEventListener("pointerdown", (e) => {
+    if (!fontPanel.hidden && !fontPanel.contains(e.target) && !fontBtn.contains(e.target)) {
+      closeFontPanel();
+    }
+  });
+
+  /* ============================================================
    * 히스토리 (실행 취소 / 다시 실행)
    * ============================================================ */
   const history = { stack: [], idx: -1 };
@@ -83,6 +289,13 @@
   }
 
   /* ============================================================
+   * 자동 저장 (localStorage)
+   * ============================================================ */
+  const autosave = debounce(() => {
+    try { localStorage.setItem(AUTOSAVE_KEY, codeInput.value); } catch (_) { /* 저장 공간 부족 등 */ }
+  }, 800);
+
+  /* ============================================================
    * 코드 → 미리보기 렌더링
    * ============================================================ */
   function setCode(code, { record = true } = {}) {
@@ -94,6 +307,7 @@
 
   function updateStat() {
     codeStat.textContent = `${codeInput.value.length.toLocaleString()}자`;
+    autosave();
   }
 
   function renderPreview() {
@@ -124,6 +338,9 @@
       [data-lh-hover] { outline: 1.5px dashed rgba(36,107,235,.55) !important; outline-offset: 2px; cursor: default; }
       [data-lh-selected] { outline: 2px solid #246BEB !important; outline-offset: 2px; cursor: move; touch-action: none; }
       [data-lh-selected][contenteditable="true"] { cursor: text; outline-style: dashed !important; }
+      .__lh_guide { position: fixed; background: #FF2E92; z-index: 2147483647; pointer-events: none; }
+      .__lh_guide.v { width: 1.5px; }
+      .__lh_guide.h { height: 1.5px; }
     `;
     (doc.head || doc.documentElement).appendChild(st);
   }
@@ -135,7 +352,7 @@
     const doc = iframe.contentDocument;
     if (!doc || !doc.documentElement) return "";
     const clone = doc.documentElement.cloneNode(true);
-    clone.querySelectorAll("#__lh_style, script[data-lh]").forEach((e) => e.remove());
+    clone.querySelectorAll("#__lh_style, script[data-lh], .__lh_guide").forEach((e) => e.remove());
     clone.querySelectorAll("[data-lh-hover], [data-lh-selected], [contenteditable]").forEach((e) => {
       e.removeAttribute("data-lh-hover");
       e.removeAttribute("data-lh-selected");
@@ -175,6 +392,8 @@
       selectedEl = null;
     }
     editToolbar.hidden = true;
+    closeFontPanel();
+    removeGuides();
   }
 
   function selectElement(el) {
@@ -185,6 +404,15 @@
     selChip.textContent = el.tagName.toLowerCase();
     $("#btnImage").hidden = el.tagName.toUpperCase() !== "IMG";
     editToolbar.hidden = false;
+    closeFontPanel();
+    updateFontChip();
+    updateFontSizeInput();
+  }
+
+  function updateFontSizeInput() {
+    if (!selectedEl) return;
+    const size = parseFloat(iframe.contentWindow.getComputedStyle(selectedEl).fontSize) || 16;
+    fontSizeInput.value = Math.round(size);
   }
 
   function startTextEdit(el) {
@@ -219,6 +447,38 @@
     } else {
       el.style.transform = `${base ? base + " " : ""}translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     }
+  }
+
+  function nudgeSelected(dx, dy) {
+    if (!selectedEl || editingEl) return;
+    const t = getTranslate(selectedEl);
+    setTranslate(selectedEl, t.x + dx, t.y + dy);
+    syncFromPreviewDebounced();
+  }
+
+  /* ---- 가운데 정렬 가이드선 ---- */
+  function showGuide(doc, kind, rect, center) {
+    let g = doc.querySelector(`.__lh_guide.${kind}`);
+    if (!g) {
+      g = doc.createElement("div");
+      g.className = `__lh_guide ${kind}`;
+      doc.body.appendChild(g);
+    }
+    if (kind === "v") {
+      g.style.left = center + "px";
+      g.style.top = rect.top + "px";
+      g.style.height = rect.height + "px";
+    } else {
+      g.style.top = center + "px";
+      g.style.left = rect.left + "px";
+      g.style.width = rect.width + "px";
+    }
+  }
+
+  function removeGuides() {
+    try {
+      iframe.contentDocument?.querySelectorAll(".__lh_guide").forEach((g) => g.remove());
+    } catch (_) {}
   }
 
   function attachPreviewEvents(doc) {
@@ -262,24 +522,50 @@
       startTextEdit(e.target);
     });
 
-    // 선택된 요소 드래그 이동
+    // 선택된 요소 드래그 이동 + 가운데 정렬 스냅
     doc.addEventListener("pointerdown", (e) => {
       if (!editMode || editingEl) return;
       if (!selectedEl || (e.target !== selectedEl && !selectedEl.contains(e.target))) return;
       const start = getTranslate(selectedEl);
-      drag = { sx: e.clientX, sy: e.clientY, bx: start.x, by: start.y, moved: false };
+      const er = selectedEl.getBoundingClientRect();
+      const parent = selectedEl.parentElement || doc.body;
+      const pr = parent.getBoundingClientRect();
+      drag = {
+        sx: e.clientX, sy: e.clientY,
+        bx: start.x, by: start.y,
+        c0x: er.left + er.width / 2, c0y: er.top + er.height / 2,
+        pcx: pr.left + pr.width / 2, pcy: pr.top + pr.height / 2,
+        pr,
+        moved: false,
+      };
       try { selectedEl.setPointerCapture(e.pointerId); } catch (_) {}
       e.preventDefault();
     });
+
     doc.addEventListener("pointermove", (e) => {
       if (!drag || !selectedEl) return;
-      const dx = e.clientX - drag.sx;
-      const dy = e.clientY - drag.sy;
+      let dx = e.clientX - drag.sx;
+      let dy = e.clientY - drag.sy;
       if (!drag.moved && Math.hypot(dx, dy) < 3) return;
       drag.moved = true;
+
+      // 부모 컨테이너 가운데에 가까워지면 스냅 + 가이드선 표시
+      const cx = drag.c0x + dx;
+      const cy = drag.c0y + dy;
+      let snapX = false, snapY = false;
+      if (Math.abs(cx - drag.pcx) < SNAP_DIST) { dx += drag.pcx - cx; snapX = true; }
+      if (Math.abs(cy - drag.pcy) < SNAP_DIST) { dy += drag.pcy - cy; snapY = true; }
+
       setTranslate(selectedEl, drag.bx + dx, drag.by + dy);
+
+      if (snapX) showGuide(doc, "v", drag.pr, drag.pcx);
+      else doc.querySelector(".__lh_guide.v")?.remove();
+      if (snapY) showGuide(doc, "h", drag.pr, drag.pcy);
+      else doc.querySelector(".__lh_guide.h")?.remove();
     });
+
     const endDrag = () => {
+      removeGuides();
       if (drag && drag.moved) syncFromPreview();
       drag = null;
     };
@@ -297,6 +583,13 @@
       if ((e.key === "Delete" || e.key === "Backspace") && selectedEl && !editingEl) {
         e.preventDefault();
         deleteSelected();
+      }
+      if (e.key.startsWith("Arrow") && selectedEl && !editingEl) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const map = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+        const [dx, dy] = map[e.key] || [0, 0];
+        nudgeSelected(dx, dy);
       }
     });
   }
@@ -326,6 +619,7 @@
       case "font-inc": {
         const cur = parseFloat(win.getComputedStyle(el).fontSize) || 16;
         el.style.fontSize = Math.max(6, cur + (act === "font-inc" ? 2 : -2)) + "px";
+        updateFontSizeInput();
         break;
       }
       case "bold": {
@@ -343,6 +637,15 @@
       case "image":
         imgInput.click();
         return;
+      case "select-parent": {
+        const parent = el.parentElement;
+        if (parent && isEditableTarget(parent)) {
+          selectElement(parent);
+        } else {
+          toast("더 위로 올라갈 요소가 없어요", "info", true);
+        }
+        return;
+      }
       case "duplicate": {
         const copy = el.cloneNode(true);
         copy.removeAttribute("data-lh-selected");
@@ -364,6 +667,14 @@
         clearSelection();
         return;
     }
+    syncFromPreview();
+  });
+
+  fontSizeInput.addEventListener("change", () => {
+    if (!selectedEl) return;
+    const size = Math.min(400, Math.max(6, parseInt(fontSizeInput.value, 10) || 16));
+    fontSizeInput.value = size;
+    selectedEl.style.fontSize = size + "px";
     syncFromPreview();
   });
 
@@ -721,15 +1032,25 @@
 
   document.addEventListener("keydown", (e) => {
     const mod = e.ctrlKey || e.metaKey;
+    const inField = document.activeElement === codeInput ||
+      document.activeElement === fontSearch ||
+      document.activeElement === fontSizeInput;
     if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
-      if (document.activeElement !== codeInput) { e.preventDefault(); applyHistory(-1); }
+      if (!inField) { e.preventDefault(); applyHistory(-1); }
     } else if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
-      if (document.activeElement !== codeInput) { e.preventDefault(); applyHistory(1); }
+      if (!inField) { e.preventDefault(); applyHistory(1); }
     } else if (e.key === "Escape") {
-      if (!downloadModal.hidden) closeDownloadModal();
+      if (!fontPanel.hidden) closeFontPanel();
+      else if (!downloadModal.hidden) closeDownloadModal();
       else clearSelection();
-    } else if ((e.key === "Delete") && selectedEl && document.activeElement !== codeInput) {
+    } else if (e.key === "Delete" && selectedEl && !inField) {
       deleteSelected();
+    } else if (e.key.startsWith("Arrow") && selectedEl && !inField && !editingEl) {
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      const map = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      const [dx, dy] = map[e.key] || [0, 0];
+      nudgeSelected(dx, dy);
     } else if (mod && e.key.toLowerCase() === "s") {
       e.preventDefault();
       if (codeInput.value.trim()) downloadHTML();
@@ -772,9 +1093,9 @@
 
   <div class="page page-2">
     <h2>이렇게 사용해요</h2>
-    <div class="tip"><strong>① 한 번 클릭 = 선택</strong><span>위 도구 막대로 크기·색·정렬을 바꿔요</span></div>
+    <div class="tip"><strong>① 한 번 클릭 = 선택</strong><span>위 도구 막대로 글꼴·크기·색·정렬을 바꿔요</span></div>
     <div class="tip"><strong>② 두 번 클릭 = 글자 수정</strong><span>코드를 몰라도 내용을 바로 고칠 수 있어요</span></div>
-    <div class="tip"><strong>③ 끌기 = 위치 이동</strong><span>선택한 요소를 원하는 곳으로 옮겨요</span></div>
+    <div class="tip"><strong>③ 끌기 = 위치 이동</strong><span>가운데에 가까워지면 분홍 가이드선에 착 붙어요</span></div>
   </div>
 
   <div class="page page-3">
@@ -787,6 +1108,17 @@
 
   /* ---------------- 초기화 ---------------- */
   updateStat();
-  renderPreview();
-  pushHistory("");
+  let restored = false;
+  try {
+    const saved = localStorage.getItem(AUTOSAVE_KEY);
+    if (saved && saved.trim()) {
+      setCode(saved);
+      restored = true;
+      toast("이전 작업을 불러왔어요", "history");
+    }
+  } catch (_) {}
+  if (!restored) {
+    renderPreview();
+    pushHistory("");
+  }
 })();
