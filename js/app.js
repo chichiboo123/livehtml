@@ -29,6 +29,7 @@
   const fontSizeInput = $("#fontSizeInput");
   const insertFab = $("#insertFab");
   const insertPanel = $("#insertPanel");
+  const effectPanel = $("#effectPanel");
 
   const H2C_SRC = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
   const JSZIP_SRC = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
@@ -260,6 +261,7 @@
   function openFontPanel() {
     if (!selectedEl) return;
     closeInsertPanel();
+    closeEffectPanel();
     loadFontPreviews();
     buildFontList(fontSearch.value);
     fontPanel.hidden = false;
@@ -278,6 +280,10 @@
     }
     if (!insertPanel.hidden && !insertPanel.contains(e.target) && !insertFab.contains(e.target)) {
       closeInsertPanel();
+    }
+    if (!effectPanel.hidden && !effectPanel.contains(e.target) &&
+        !(e.target.closest && e.target.closest("[data-act='effects']"))) {
+      closeEffectPanel();
     }
   });
 
@@ -407,6 +413,8 @@
       }
       .__lh_handle.nw, .__lh_handle.se { cursor: nwse-resize; }
       .__lh_handle.ne, .__lh_handle.sw { cursor: nesw-resize; }
+      .__lh_handle.rot { background: #246BEB; cursor: grab; }
+      .__lh_handle.rot:active { cursor: grabbing; }
     `;
     (doc.head || doc.documentElement).appendChild(st);
   }
@@ -523,6 +531,7 @@
     }
     editToolbar.hidden = true;
     closeFontPanel();
+    closeEffectPanel();
     removeGuides();
     updateHandles();
   }
@@ -536,6 +545,7 @@
     $("#btnImage").hidden = el.tagName.toUpperCase() !== "IMG";
     editToolbar.hidden = false;
     closeFontPanel();
+    closeEffectPanel();
     updateFontChip();
     updateFontSizeInput();
     updateHandles();
@@ -576,22 +586,40 @@
     } catch (_) {}
   }
 
-  /* ---- 드래그 이동 (translate를 인라인 transform에 합성) ---- */
-  const TRANSLATE_RE = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)\s*$/;
+  /* ---- 이동·회전 (translate/rotate를 인라인 transform 끝에 합성) ---- */
+  const XFORM_RE = /(?:\s*translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\))?(?:\s*rotate\((-?[\d.]+)deg\))?\s*$/;
+
+  function getXform(el) {
+    const s = el.style.transform || "";
+    const m = s.match(XFORM_RE);
+    return {
+      x: m && m[1] ? parseFloat(m[1]) : 0,
+      y: m && m[2] ? parseFloat(m[2]) : 0,
+      r: m && m[3] ? parseFloat(m[3]) : 0,
+      base: m ? s.slice(0, m.index).trim() : s.trim(),
+    };
+  }
+
+  function setXform(el, x, y, r) {
+    let s = getXform(el).base;
+    if (Math.abs(x) >= 0.5 || Math.abs(y) >= 0.5) {
+      s += ` translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    }
+    if (Math.abs(((r % 360) + 360) % 360) >= 0.5) {
+      s += ` rotate(${Math.round(r)}deg)`;
+    }
+    s = s.trim();
+    if (s) el.style.transform = s;
+    else el.style.removeProperty("transform");
+  }
 
   function getTranslate(el) {
-    const m = (el.style.transform || "").match(TRANSLATE_RE);
-    return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
+    const t = getXform(el);
+    return { x: t.x, y: t.y };
   }
 
   function setTranslate(el, x, y) {
-    const base = (el.style.transform || "").replace(TRANSLATE_RE, "").trim();
-    if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) {
-      el.style.transform = base;
-      if (!el.style.transform) el.style.removeProperty("transform");
-    } else {
-      el.style.transform = `${base ? base + " " : ""}translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-    }
+    setXform(el, x, y, getXform(el).r);
   }
 
   function nudgeSelected(dx, dy) {
@@ -611,11 +639,13 @@
     if (!want) { existing.forEach((h) => h.remove()); return; }
     const r = selectedEl.getBoundingClientRect();
     const size = Math.max(12, Math.min(28, Math.round(14 / (currentScale || 1))));
+    const gap = Math.max(18, Math.round(24 / (currentScale || 1)));
     const pos = {
       nw: [r.left, r.top], ne: [r.right, r.top],
       sw: [r.left, r.bottom], se: [r.right, r.bottom],
+      rot: [(r.left + r.right) / 2, Math.max(size, r.top - gap)],
     };
-    ["nw", "ne", "sw", "se"].forEach((k) => {
+    ["nw", "ne", "sw", "se", "rot"].forEach((k) => {
       let h = existing.find((x) => x.classList.contains(k));
       if (!h) {
         h = doc.createElement("div");
@@ -657,9 +687,10 @@
     let hoverEl = null;
     let drag = null;
     let resize = null;
+    let rotate = null;
 
     doc.addEventListener("mouseover", (e) => {
-      if (!editMode || editingEl || drag || resize) return;
+      if (!editMode || editingEl || drag || resize || rotate) return;
       if (hoverEl) hoverEl.removeAttribute("data-lh-hover");
       hoverEl = null;
       if (isEditableTarget(e.target) && e.target !== selectedEl) {
@@ -700,8 +731,23 @@
     doc.addEventListener("pointerdown", (e) => {
       if (!editMode || editingEl) return;
 
-      // 1) 크기 조절 핸들
+      // 1) 회전 핸들
       const handle = e.target.closest && e.target.closest(".__lh_handle");
+      if (handle && selectedEl && handle.classList.contains("rot")) {
+        const er = selectedEl.getBoundingClientRect();
+        const cx = (er.left + er.right) / 2;
+        const cy = (er.top + er.bottom) / 2;
+        rotate = {
+          cx, cy,
+          startA: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
+          r0: getXform(selectedEl).r,
+        };
+        try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+        e.preventDefault();
+        return;
+      }
+
+      // 2) 크기 조절 핸들
       if (handle && selectedEl) {
         const er = selectedEl.getBoundingClientRect();
         const cs = doc.defaultView.getComputedStyle(selectedEl);
@@ -740,6 +786,18 @@
     });
 
     doc.addEventListener("pointermove", (e) => {
+      // 회전 (45° 근처에서 자석처럼 스냅)
+      if (rotate && selectedEl) {
+        const a = Math.atan2(e.clientY - rotate.cy, e.clientX - rotate.cx) * 180 / Math.PI;
+        let newR = rotate.r0 + (a - rotate.startA);
+        const snap = Math.round(newR / 45) * 45;
+        if (Math.abs(newR - snap) < 4) newR = snap;
+        const t = getXform(selectedEl);
+        setXform(selectedEl, t.x, t.y, newR);
+        updateHandles();
+        return;
+      }
+
       // 크기 조절
       if (resize && selectedEl) {
         const fx = resize.corner.includes("e") ? 1 : -1;
@@ -793,6 +851,7 @@
 
     const endPointer = () => {
       removeGuides();
+      if (rotate) { rotate = null; syncFromPreview(); }
       if (resize) { resize = null; syncFromPreview(); }
       if (drag && drag.moved) syncFromPreview();
       drag = null;
@@ -886,10 +945,13 @@
         break;
       }
       case "reset-pos":
-        setTranslate(el, 0, 0);
+        setXform(el, 0, 0, 0);
         updateHandles();
-        toast("원래 위치로 되돌렸어요", "restart_alt");
+        toast("위치와 회전을 되돌렸어요", "restart_alt");
         break;
+      case "effects":
+        effectPanel.hidden ? openEffectPanel() : closeEffectPanel();
+        return;
       case "delete":
         deleteSelected();
         return;
@@ -919,6 +981,46 @@
     if (!selectedEl) return;
     selectedEl.style.background = e.target.value;
     syncFromPreviewDebounced();
+  });
+
+  /* ---- 글자 효과 (그림자/외곽선/네온/입체) ---- */
+  function hexToRgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+
+  const TEXT_EFFECTS = {
+    none: () => "",
+    shadow: (c) => `3px 3px 8px ${hexToRgba(c, 0.55)}`,
+    outline: (c) => `-2px 0 0 ${c}, 2px 0 0 ${c}, 0 -2px 0 ${c}, 0 2px 0 ${c}, -1.4px -1.4px 0 ${c}, 1.4px -1.4px 0 ${c}, -1.4px 1.4px 0 ${c}, 1.4px 1.4px 0 ${c}`,
+    neon: (c) => `0 0 8px ${c}, 0 0 18px ${c}, 0 0 32px ${hexToRgba(c, 0.6)}`,
+    d3: (c) => `1px 1px 0 ${c}, 2px 2px 0 ${c}, 3px 3px 0 ${c}, 4px 4px 0 ${c}`,
+  };
+  let lastEffect = "shadow";
+
+  function applyTextEffect(type) {
+    if (!selectedEl) return;
+    lastEffect = type;
+    const value = TEXT_EFFECTS[type]($("#effectColor").value);
+    if (value) selectedEl.style.textShadow = value;
+    else selectedEl.style.removeProperty("text-shadow");
+    syncFromPreview();
+  }
+
+  function openEffectPanel() {
+    if (!selectedEl) return;
+    closeFontPanel();
+    closeInsertPanel();
+    effectPanel.hidden = false;
+  }
+  function closeEffectPanel() { effectPanel.hidden = true; }
+
+  effectPanel.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-effect]");
+    if (btn) applyTextEffect(btn.dataset.effect);
+  });
+  $("#effectColor").addEventListener("input", () => {
+    if (lastEffect !== "none") applyTextEffect(lastEffect);
   });
 
   imgInput.addEventListener("change", () => {
@@ -1585,10 +1687,12 @@
       if (!inField) { e.preventDefault(); applyHistory(1); }
     } else if (e.key === "Escape") {
       if (!fontPanel.hidden) closeFontPanel();
+      else if (!effectPanel.hidden) closeEffectPanel();
       else if (!insertPanel.hidden) closeInsertPanel();
       else if (!downloadModal.hidden) closeDownloadModal();
       else if (!templateModal.hidden) closeTemplates();
       else if (!helpModal.hidden) closeHelp();
+      else if (!$("#adminOverlay").hidden) $("#adminClose").click();
       else clearSelection();
     } else if (e.key === "Delete" && selectedEl && !inField) {
       deleteSelected();
@@ -1813,6 +1917,272 @@
   templateModal.addEventListener("click", (e) => {
     if (e.target === templateModal) closeTemplates();
   });
+
+  /* ============================================================
+   * 관리자 대시보드 — 내 디자인
+   * (숨김 진입: 로고 5번 연속 클릭 또는 주소 끝에 #admin)
+   * 저장: 이 브라우저(localStorage) / 선택: Google Apps Script 백업
+   * ============================================================ */
+  const DESIGNS_KEY = "livehtml:designs";
+  const GAS_KEY = "livehtml:gasUrl";
+  const adminOverlay = $("#adminOverlay");
+  const designListEl = $("#designList");
+  const gasUrlInput = $("#gasUrl");
+
+  let designs = [];
+  try { designs = JSON.parse(localStorage.getItem(DESIGNS_KEY)) || []; } catch (_) {}
+  let adminView = localStorage.getItem("livehtml:adminView") || "card";
+
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  function persistDesigns() {
+    try {
+      localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs));
+      return true;
+    } catch (_) {
+      toast("저장 공간이 가득 찼어요. 오래된 디자인을 지우거나 클라우드 백업을 사용하세요", "error", true);
+      return false;
+    }
+  }
+
+  function fmtDate(ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}. ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+
+  async function captureThumb() {
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return null;
+    clearSelection();
+    clearPageMarkers();
+    try {
+      const pgs = pages.length ? pages : detectPages();
+      const el = pgs[0] || doc.body;
+      const r = el.getBoundingClientRect();
+      const h2c = await ensureHtml2Canvas();
+      const canvas = await h2c(el, {
+        scale: Math.min(1, 320 / Math.max(r.width, 1)),
+        useCORS: true, logging: false,
+      });
+      return canvas.toDataURL("image/jpeg", 0.75);
+    } catch (_) {
+      return null;
+    } finally {
+      refreshPageMarkers();
+    }
+  }
+
+  function renderDesigns() {
+    designListEl.classList.toggle("list-view", adminView === "list");
+    $("#adminViewCard").classList.toggle("active", adminView === "card");
+    $("#adminViewList").classList.toggle("active", adminView === "list");
+    designListEl.innerHTML = "";
+    $("#adminEmpty").hidden = designs.length > 0;
+    designs.forEach((d) => {
+      const card = document.createElement("div");
+      card.className = "design-card";
+
+      const thumb = document.createElement("div");
+      thumb.className = "design-thumb";
+      thumb.title = "열기";
+      if (d.thumb) {
+        const img = document.createElement("img");
+        img.src = d.thumb;
+        img.alt = d.name;
+        thumb.appendChild(img);
+      } else {
+        thumb.innerHTML = `<span class="material-symbols-outlined">description</span>`;
+      }
+      thumb.addEventListener("click", () => openDesign(d));
+
+      const info = document.createElement("div");
+      info.className = "design-info";
+      info.innerHTML = `<div class="design-name"></div><div class="design-date"></div>`;
+      info.querySelector(".design-name").textContent = d.name;
+      info.querySelector(".design-date").textContent = fmtDate(d.updatedAt);
+
+      const actions = document.createElement("div");
+      actions.className = "design-actions";
+      const mkBtn = (icon, title, fn, danger = false) => {
+        const b = document.createElement("button");
+        b.className = "tool-btn" + (danger ? " danger" : "");
+        b.title = title;
+        b.innerHTML = `<span class="material-symbols-outlined">${icon}</span>`;
+        b.addEventListener("click", fn);
+        actions.appendChild(b);
+      };
+      mkBtn("edit", "열기 (편집)", () => openDesign(d));
+      mkBtn("sync", "현재 작업으로 덮어쓰기", () => overwriteDesign(d));
+      mkBtn("content_copy", "복제", () => duplicateDesign(d));
+      mkBtn("drive_file_rename_outline", "이름 바꾸기", () => renameDesign(d));
+      mkBtn("delete", "삭제", () => deleteDesign(d), true);
+
+      card.append(thumb, info, actions);
+      designListEl.appendChild(card);
+    });
+  }
+
+  function openDesign(d) {
+    if (codeInput.value.trim() && codeInput.value !== d.html &&
+        !confirm(`'${d.name}' 디자인을 불러올까요?\n지금 작업 중인 내용은 사라져요. (자동 저장본은 유지)`)) return;
+    setCode(d.html);
+    closeAdmin();
+    switchTab("preview");
+    toast(`'${d.name}' 디자인을 불러왔어요`, "edit");
+  }
+
+  async function saveCurrentDesign() {
+    if (!codeInput.value.trim()) {
+      toast("저장할 내용이 없어요. 먼저 HTML을 만들어 주세요", "info", true);
+      return;
+    }
+    const name = prompt("디자인 이름을 입력하세요", `내 디자인 ${designs.length + 1}`);
+    if (name === null) return;
+    toast("디자인을 저장하는 중…", "hourglass_top");
+    const thumb = await captureThumb();
+    const now = Date.now();
+    designs.unshift({
+      id: uid(),
+      name: name.trim() || `내 디자인 ${designs.length + 1}`,
+      html: codeInput.value,
+      thumb,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (persistDesigns()) toast("디자인을 저장했어요", "check_circle");
+    renderDesigns();
+  }
+
+  async function overwriteDesign(d) {
+    if (!codeInput.value.trim()) {
+      toast("덮어쓸 작업 내용이 없어요", "info", true);
+      return;
+    }
+    if (!confirm(`'${d.name}'을(를) 지금 작업 중인 내용으로 바꿀까요?`)) return;
+    d.html = codeInput.value;
+    d.updatedAt = Date.now();
+    d.thumb = await captureThumb() || d.thumb;
+    if (persistDesigns()) toast(`'${d.name}'을(를) 업데이트했어요`, "sync");
+    renderDesigns();
+  }
+
+  function duplicateDesign(d) {
+    const idx = designs.indexOf(d);
+    const copy = { ...d, id: uid(), name: `${d.name} (복사본)`, createdAt: Date.now(), updatedAt: Date.now() };
+    designs.splice(idx + 1, 0, copy);
+    if (persistDesigns()) toast("디자인을 복제했어요", "content_copy");
+    renderDesigns();
+  }
+
+  function renameDesign(d) {
+    const name = prompt("새 이름을 입력하세요", d.name);
+    if (name === null || !name.trim()) return;
+    d.name = name.trim();
+    d.updatedAt = Date.now();
+    persistDesigns();
+    renderDesigns();
+  }
+
+  function deleteDesign(d) {
+    if (!confirm(`'${d.name}' 디자인을 삭제할까요?\n삭제하면 되돌릴 수 없어요.`)) return;
+    designs = designs.filter((x) => x !== d);
+    persistDesigns();
+    renderDesigns();
+    toast("디자인을 삭제했어요", "delete");
+  }
+
+  function openAdmin() {
+    gasUrlInput.value = localStorage.getItem(GAS_KEY) || "";
+    renderDesigns();
+    adminOverlay.hidden = false;
+  }
+  function closeAdmin() { adminOverlay.hidden = true; }
+
+  $("#adminClose").addEventListener("click", closeAdmin);
+  $("#adminSaveCurrent").addEventListener("click", saveCurrentDesign);
+  $("#adminViewCard").addEventListener("click", () => {
+    adminView = "card";
+    localStorage.setItem("livehtml:adminView", adminView);
+    renderDesigns();
+  });
+  $("#adminViewList").addEventListener("click", () => {
+    adminView = "list";
+    localStorage.setItem("livehtml:adminView", adminView);
+    renderDesigns();
+  });
+  $("#adminCloudBtn").addEventListener("click", () => {
+    const p = $("#cloudPanel");
+    p.hidden = !p.hidden;
+  });
+  gasUrlInput.addEventListener("change", () => {
+    localStorage.setItem(GAS_KEY, gasUrlInput.value.trim());
+  });
+
+  /* ---- Google Apps Script 백업/복원 ---- */
+  function gasUrl() {
+    const url = gasUrlInput.value.trim();
+    if (!url) {
+      toast("먼저 Apps Script 웹 앱 URL을 입력해 주세요", "info", true);
+      return null;
+    }
+    localStorage.setItem(GAS_KEY, url);
+    return url;
+  }
+
+  $("#gasBackup").addEventListener("click", async () => {
+    const url = gasUrl();
+    if (!url) return;
+    const btn = $("#gasBackup");
+    btn.disabled = true;
+    try {
+      const res = await fetch(url, { method: "POST", body: JSON.stringify({ action: "backup", designs }) });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error || "backup failed");
+      toast(`클라우드에 디자인 ${designs.length}개를 백업했어요`, "cloud_done");
+    } catch (err) {
+      console.error(err);
+      toast("백업에 실패했어요. URL과 배포 설정(모든 사용자)을 확인하세요", "error", true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("#gasRestore").addEventListener("click", async () => {
+    const url = gasUrl();
+    if (!url) return;
+    const btn = $("#gasRestore");
+    btn.disabled = true;
+    try {
+      const res = await fetch(url + (url.includes("?") ? "&" : "?") + "action=restore");
+      const arr = await res.json();
+      if (!Array.isArray(arr)) throw new Error("invalid data");
+      if (designs.length &&
+          !confirm(`이 기기의 디자인 ${designs.length}개를 클라우드의 ${arr.length}개로 바꿀까요?`)) return;
+      designs = arr;
+      persistDesigns();
+      renderDesigns();
+      toast(`클라우드에서 디자인 ${arr.length}개를 가져왔어요`, "cloud_download");
+    } catch (err) {
+      console.error(err);
+      toast("복원에 실패했어요. URL과 배포 설정을 확인하세요", "error", true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---- 숨김 진입: 로고 5번 연속 클릭 / 주소 #admin ---- */
+  let logoClicks = 0;
+  let logoTimer = null;
+  $(".brand-logo").addEventListener("click", () => {
+    logoClicks++;
+    clearTimeout(logoTimer);
+    logoTimer = setTimeout(() => { logoClicks = 0; }, 1800);
+    if (logoClicks >= 5) {
+      logoClicks = 0;
+      openAdmin();
+    }
+  });
+  if (location.hash === "#admin") setTimeout(openAdmin, 300);
 
   /* ---------------- 초기화 ---------------- */
   updateStat();

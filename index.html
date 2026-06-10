@@ -114,6 +114,7 @@
             <span class="material-symbols-outlined">format_color_fill</span>
             <input type="color" id="fillPicker" />
           </label>
+          <button class="tool-btn" data-act="effects" title="글자 효과"><span class="material-symbols-outlined">auto_fix_high</span></button>
         </div>
         <div class="tool-group">
           <button class="tool-btn" data-act="align-left" title="왼쪽 정렬"><span class="material-symbols-outlined">format_align_left</span></button>
@@ -124,7 +125,7 @@
           <button class="tool-btn" data-act="image" id="btnImage" title="이미지 교체" hidden><span class="material-symbols-outlined">image</span></button>
           <button class="tool-btn" data-act="select-parent" title="상위 요소 선택"><span class="material-symbols-outlined">move_up</span></button>
           <button class="tool-btn" data-act="duplicate" title="복제"><span class="material-symbols-outlined">content_copy</span></button>
-          <button class="tool-btn" data-act="reset-pos" title="위치 초기화"><span class="material-symbols-outlined">restart_alt</span></button>
+          <button class="tool-btn" data-act="reset-pos" title="위치·회전 초기화"><span class="material-symbols-outlined">restart_alt</span></button>
           <button class="tool-btn danger" data-act="delete" title="삭제 (Delete)"><span class="material-symbols-outlined">delete</span></button>
         </div>
         <button class="tool-btn close" data-act="deselect" title="선택 해제 (Esc)"><span class="material-symbols-outlined">close</span></button>
@@ -137,6 +138,19 @@
           <input type="search" id="fontSearch" placeholder="글꼴 검색 (한글/영문)" autocomplete="off" />
         </div>
         <div class="font-list" id="fontList"><!-- JS로 생성 --></div>
+      </div>
+
+      <!-- 글자 효과 패널 -->
+      <div class="font-panel effect-panel" id="effectPanel" hidden>
+        <div class="font-group-title" style="padding-top:12px">글자 효과</div>
+        <div class="effect-list">
+          <button class="effect-item" data-effect="none"><span class="fx">가나</span><small>없음</small></button>
+          <button class="effect-item" data-effect="shadow"><span class="fx" style="text-shadow:3px 3px 6px rgba(0,0,0,.45)">가나</span><small>그림자</small></button>
+          <button class="effect-item" data-effect="outline"><span class="fx" style="color:#fff;text-shadow:-1.5px 0 0 #1E2124,1.5px 0 0 #1E2124,0 -1.5px 0 #1E2124,0 1.5px 0 #1E2124">가나</span><small>외곽선</small></button>
+          <button class="effect-item" data-effect="neon"><span class="fx" style="color:#246BEB;text-shadow:0 0 6px #5E8BFF,0 0 14px #5E8BFF">가나</span><small>네온</small></button>
+          <button class="effect-item" data-effect="d3"><span class="fx" style="text-shadow:1px 1px 0 #B0B8C1,2px 2px 0 #B0B8C1,3px 3px 0 #B0B8C1">가나</span><small>입체</small></button>
+        </div>
+        <label class="effect-color"><span>효과 색상</span><input type="color" id="effectColor" value="#222222" /></label>
       </div>
 
       <div class="preview-viewport" id="previewViewport">
@@ -278,6 +292,46 @@
         <button class="btn btn-primary btn-lg btn-block" id="dlPng">
           <span class="material-symbols-outlined">photo_library</span><span id="dlPngLabel">PNG 저장</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 관리자 대시보드 (숨김: 로고 5번 클릭 또는 #admin) ===== -->
+  <div class="admin-overlay" id="adminOverlay" hidden>
+    <header class="admin-head">
+      <h2><span class="material-symbols-outlined">dashboard</span>내 디자인<span class="admin-badge">관리자</span></h2>
+      <div class="admin-tools">
+        <button id="adminSaveCurrent" class="btn btn-primary btn-sm">
+          <span class="material-symbols-outlined">add</span><span class="btn-label">현재 작업 저장</span>
+        </button>
+        <div class="mode-toggle">
+          <button id="adminViewCard" class="mode-btn active" title="카드형 보기" aria-label="카드형 보기"><span class="material-symbols-outlined">grid_view</span></button>
+          <button id="adminViewList" class="mode-btn" title="리스트형 보기" aria-label="리스트형 보기"><span class="material-symbols-outlined">view_list</span></button>
+        </div>
+        <button id="adminCloudBtn" class="btn btn-tertiary btn-sm">
+          <span class="material-symbols-outlined">cloud</span><span class="btn-label">클라우드</span>
+        </button>
+        <button id="adminClose" class="btn btn-icon" aria-label="닫기"><span class="material-symbols-outlined">close</span></button>
+      </div>
+    </header>
+    <div class="cloud-panel" id="cloudPanel" hidden>
+      <p class="cloud-desc">
+        Google Apps Script로 내 Google Drive에 디자인을 백업·복원할 수 있어요.
+        저장소의 <code>gas/Code.gs</code> 코드를 <strong>script.google.com</strong> 새 프로젝트에 붙여넣고
+        [배포 → 새 배포 → 웹 앱 → 액세스: 모든 사용자]로 배포한 뒤, 발급된 URL을 아래에 붙여넣으세요.
+        <strong>URL은 비밀번호처럼 비밀로 관리하세요.</strong>
+      </p>
+      <div class="cloud-row">
+        <input type="url" id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" />
+        <button id="gasBackup" class="btn btn-secondary btn-sm"><span class="material-symbols-outlined">cloud_upload</span>백업</button>
+        <button id="gasRestore" class="btn btn-tertiary btn-sm"><span class="material-symbols-outlined">cloud_download</span>복원</button>
+      </div>
+    </div>
+    <div class="admin-body">
+      <div class="design-list" id="designList"><!-- JS로 생성 --></div>
+      <div class="admin-empty" id="adminEmpty">
+        <span class="material-symbols-outlined">draft</span>
+        <p>저장된 디자인이 없어요.<br>[현재 작업 저장]을 눌러 첫 디자인을 만들어 보세요.</p>
       </div>
     </div>
   </div>
