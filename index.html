@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Live HTML — 실시간 HTML 편집기</title>
+<meta name="description" content="HTML 카드뉴스·인포그래픽·포스터를 코드 몰라도 캔바처럼 쉽게 수정하고, 수정된 HTML과 PNG로 바로 받아보세요." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23246BEB'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3E%26lt;/%26gt;%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="view-preview">
+
+  <!-- ===== 헤더 ===== -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-logo"><span class="material-symbols-outlined">code</span></span>
+      <h1 class="brand-name">Live HTML</h1>
+    </div>
+
+    <div class="header-actions">
+      <div class="history-group">
+        <button id="btnUndo" class="btn btn-icon" title="실행 취소 (Ctrl+Z)" aria-label="실행 취소" disabled>
+          <span class="material-symbols-outlined">undo</span>
+        </button>
+        <button id="btnRedo" class="btn btn-icon" title="다시 실행 (Ctrl+Y)" aria-label="다시 실행" disabled>
+          <span class="material-symbols-outlined">redo</span>
+        </button>
+      </div>
+      <button id="btnShare" class="btn btn-tertiary">
+        <span class="material-symbols-outlined">share</span><span class="btn-label">공유</span>
+      </button>
+      <button id="btnCopyCode" class="btn btn-secondary">
+        <span class="material-symbols-outlined">content_copy</span><span class="btn-label">HTML 복사</span>
+      </button>
+      <button id="btnDownload" class="btn btn-primary">
+        <span class="material-symbols-outlined">download</span><span class="btn-label">다운로드</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== 본문 ===== -->
+  <main class="app-main">
+
+    <!-- 코드 입력창 -->
+    <section class="pane code-pane" aria-label="HTML 코드 입력">
+      <div class="pane-toolbar">
+        <span class="pane-title"><span class="material-symbols-outlined">code_blocks</span>HTML 코드</span>
+        <div class="pane-tools">
+          <button id="btnUpload" class="btn btn-tertiary btn-sm">
+            <span class="material-symbols-outlined">upload_file</span><span class="btn-label">업로드</span>
+          </button>
+          <button id="btnPaste" class="btn btn-tertiary btn-sm">
+            <span class="material-symbols-outlined">content_paste</span><span class="btn-label">붙여넣기</span>
+          </button>
+          <button id="btnClear" class="btn btn-tertiary btn-sm">
+            <span class="material-symbols-outlined">delete_sweep</span><span class="btn-label">지우기</span>
+          </button>
+        </div>
+      </div>
+      <textarea id="codeInput" spellcheck="false" autocomplete="off"
+        placeholder="여기에 HTML 코드를 붙여넣으면 오른쪽에 바로 보여요.&#10;&#10;파일 업로드, 클립보드 붙여넣기도 가능해요.&#10;HTML 파일을 화면에 끌어다 놓아도 돼요!"></textarea>
+      <div class="code-statusbar"><span id="codeStat">0자</span></div>
+    </section>
+
+    <div class="gutter" id="gutter" role="separator" aria-label="패널 크기 조절"></div>
+
+    <!-- 실시간 결과 확인창 -->
+    <section class="pane preview-pane" aria-label="실시간 미리보기">
+      <div class="pane-toolbar">
+        <span class="pane-title"><span class="material-symbols-outlined">visibility</span>실시간 미리보기</span>
+        <div class="pane-tools">
+          <div class="mode-toggle" role="group" aria-label="모드 선택">
+            <button id="modeEdit" class="mode-btn active"><span class="material-symbols-outlined">edit</span>편집</button>
+            <button id="modeView" class="mode-btn"><span class="material-symbols-outlined">play_arrow</span>보기</button>
+          </div>
+          <select id="zoomSelect" class="zoom-select" aria-label="화면 배율">
+            <option value="fit" selected>자동 맞춤</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+            <option value="125">125%</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 요소 선택 시 나타나는 편집 도구 -->
+      <div class="edit-toolbar" id="editToolbar" hidden>
+        <span class="sel-chip" id="selChip">div</span>
+        <div class="tool-group">
+          <button class="tool-btn" data-act="text-edit" title="텍스트 편집 (더블클릭)"><span class="material-symbols-outlined">edit_note</span></button>
+          <button class="tool-btn" data-act="font-dec" title="글자 작게"><span class="material-symbols-outlined">text_decrease</span></button>
+          <button class="tool-btn" data-act="font-inc" title="글자 크게"><span class="material-symbols-outlined">text_increase</span></button>
+          <button class="tool-btn" data-act="bold" title="굵게"><span class="material-symbols-outlined">format_bold</span></button>
+          <button class="tool-btn" data-act="italic" title="기울임"><span class="material-symbols-outlined">format_italic</span></button>
+          <label class="tool-btn color-btn" title="글자 색">
+            <span class="material-symbols-outlined">format_color_text</span>
+            <input type="color" id="colorPicker" />
+          </label>
+        </div>
+        <div class="tool-group">
+          <button class="tool-btn" data-act="align-left" title="왼쪽 정렬"><span class="material-symbols-outlined">format_align_left</span></button>
+          <button class="tool-btn" data-act="align-center" title="가운데 정렬"><span class="material-symbols-outlined">format_align_center</span></button>
+          <button class="tool-btn" data-act="align-right" title="오른쪽 정렬"><span class="material-symbols-outlined">format_align_right</span></button>
+        </div>
+        <div class="tool-group">
+          <button class="tool-btn" data-act="image" id="btnImage" title="이미지 교체" hidden><span class="material-symbols-outlined">image</span></button>
+          <button class="tool-btn" data-act="duplicate" title="복제"><span class="material-symbols-outlined">content_copy</span></button>
+          <button class="tool-btn" data-act="reset-pos" title="위치 초기화"><span class="material-symbols-outlined">restart_alt</span></button>
+          <button class="tool-btn danger" data-act="delete" title="삭제 (Delete)"><span class="material-symbols-outlined">delete</span></button>
+        </div>
+        <button class="tool-btn close" data-act="deselect" title="선택 해제 (Esc)"><span class="material-symbols-outlined">close</span></button>
+      </div>
+
+      <div class="preview-viewport" id="previewViewport">
+        <div class="preview-canvas" id="previewCanvas">
+          <iframe id="preview" title="HTML 미리보기" sandbox="allow-same-origin allow-scripts"></iframe>
+        </div>
+
+        <!-- 빈 화면 안내 -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon"><span class="material-symbols-outlined">magic_button</span></div>
+          <h2>HTML을 불러와서 시작해요</h2>
+          <p>카드뉴스·인포그래픽·포스터 HTML을 넣으면<br/>코드를 몰라도 화면에서 바로 고칠 수 있어요.</p>
+          <div class="empty-actions">
+            <button id="emptyUpload" class="btn btn-primary btn-lg">
+              <span class="material-symbols-outlined">upload_file</span>HTML 파일 업로드
+            </button>
+            <button id="emptyPaste" class="btn btn-secondary btn-lg">
+              <span class="material-symbols-outlined">content_paste</span>클립보드에서 붙여넣기
+            </button>
+            <button id="emptySample" class="btn btn-tertiary btn-lg">
+              <span class="material-symbols-outlined">auto_awesome</span>예시로 둘러보기
+            </button>
+          </div>
+        </div>
+
+        <div class="edit-hint" id="editHint" hidden>
+          <span class="material-symbols-outlined">touch_app</span>
+          요소를 누르면 선택, 두 번 누르면 글자 수정, 끌면 이동해요
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== 모바일 탭바 ===== -->
+  <nav class="tabbar" aria-label="화면 전환">
+    <button id="tabCode" class="tab-btn">
+      <span class="material-symbols-outlined">code</span>코드
+    </button>
+    <button id="tabPreview" class="tab-btn active">
+      <span class="material-symbols-outlined">visibility</span>미리보기
+    </button>
+  </nav>
+
+  <!-- ===== 푸터 ===== -->
+  <footer class="app-footer">
+    <a href="https://litt.ly/chichiboo" target="_blank" rel="noopener noreferrer">
+      Created by. 교육뮤지컬 꿈꾸는 치수쌤
+    </a>
+  </footer>
+
+  <!-- ===== 다운로드 모달 ===== -->
+  <div class="modal-backdrop" id="downloadModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dlTitle">
+      <div class="modal-head">
+        <h3 id="dlTitle"><span class="material-symbols-outlined">download</span>다운로드</h3>
+        <button class="btn btn-icon" id="dlClose" aria-label="닫기"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <div class="modal-body">
+        <button class="dl-option" id="dlHtml">
+          <span class="dl-ic"><span class="material-symbols-outlined">html</span></span>
+          <span class="dl-text"><strong>HTML 파일</strong><small>수정된 코드를 .html 파일로 저장해요</small></span>
+          <span class="material-symbols-outlined arrow">chevron_right</span>
+        </button>
+        <div class="dl-divider"><span>PNG 이미지</span></div>
+        <div class="png-pages" id="pngPages"><!-- 페이지 목록 (JS) --></div>
+        <button class="btn btn-primary btn-lg btn-block" id="dlPng">
+          <span class="material-symbols-outlined">photo_library</span>선택한 페이지 PNG 저장
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept=".html,.htm,text/html" hidden />
+  <input type="file" id="imgInput" accept="image/*" hidden />
+  <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
+  <div class="drop-overlay" id="dropOverlay" hidden>
+    <span class="material-symbols-outlined">place_item</span>
+    <p>HTML 파일을 여기에 놓아주세요</p>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
