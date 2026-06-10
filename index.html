@@ -85,7 +85,8 @@
             <option value="50">50%</option>
             <option value="75">75%</option>
             <option value="100">100%</option>
-            <option value="125">125%</option>
+            <option value="150">150%</option>
+            <option value="200">200%</option>
           </select>
         </div>
       </div>
@@ -156,7 +157,7 @@
               <span class="material-symbols-outlined">content_paste</span>클립보드에서 붙여넣기
             </button>
             <button id="emptySample" class="btn btn-tertiary btn-lg">
-              <span class="material-symbols-outlined">auto_awesome</span>예시로 둘러보기
+              <span class="material-symbols-outlined">space_dashboard</span>템플릿으로 시작하기
             </button>
           </div>
         </div>
@@ -249,6 +250,14 @@
           <span class="material-symbols-outlined arrow">chevron_right</span>
         </button>
         <div class="dl-divider"><span>PNG 이미지</span></div>
+        <div class="png-size-row">
+          <span class="png-size-label"><span class="material-symbols-outlined">photo_size_select_large</span>이미지 크기</span>
+          <select id="pngSize" class="zoom-select" aria-label="이미지 크기">
+            <option value="1920" selected>표준 — 긴 변 1920px</option>
+            <option value="3840">고화질 — 긴 변 3840px</option>
+            <option value="0">원본 크기</option>
+          </select>
+        </div>
         <div class="dl-modes" id="dlModes">
           <label class="dl-mode">
             <input type="radio" name="pngMode" value="each" checked />
@@ -269,6 +278,19 @@
         <button class="btn btn-primary btn-lg btn-block" id="dlPng">
           <span class="material-symbols-outlined">photo_library</span><span id="dlPngLabel">PNG 저장</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 템플릿 모달 ===== -->
+  <div class="modal-backdrop" id="templateModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tplTitle">
+      <div class="modal-head">
+        <h3 id="tplTitle"><span class="material-symbols-outlined">space_dashboard</span>템플릿으로 시작</h3>
+        <button class="btn btn-icon" id="tplClose" aria-label="닫기"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <div class="modal-body">
+        <div class="tpl-grid" id="tplGrid"><!-- JS로 생성 --></div>
       </div>
     </div>
   </div>

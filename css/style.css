@@ -830,6 +830,53 @@ body.mode-view .insert-fab { display: none; }
 .png-page .dim { margin-left: auto; font-size: 12px; color: var(--c-text-sub); font-weight: 500; }
 .png-empty { font-size: 14px; color: var(--c-text-sub); text-align: center; padding: 12px; }
 
+/* ---- PNG 크기 선택 ---- */
+.png-size-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.png-size-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--c-text-sub);
+}
+.png-size-label .material-symbols-outlined { font-size: 18px; }
+.png-size-row select { flex: 1; max-width: 220px; }
+
+/* ---- 템플릿 ---- */
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.tpl-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--c-border-light);
+  border-radius: 12px;
+  background: var(--c-surface);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s, background-color .15s, transform .08s;
+}
+.tpl-card:hover { border-color: var(--c-primary); background: var(--c-primary-soft); }
+.tpl-card:active { transform: scale(.98); }
+.tpl-ic { font-size: 30px; line-height: 1.2; }
+.tpl-card strong { font-size: 14px; color: var(--c-text); }
+.tpl-card small { font-size: 12px; color: var(--c-text-sub); line-height: 1.45; }
+.tpl-size {
+  font-size: 11px; font-weight: 700;
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
+  padding: 2px 8px; border-radius: 99px;
+}
+
 /* ---- 도움말 ---- */
 .help-body { display: flex; flex-direction: column; gap: 14px; }
 .help-step { display: flex; gap: 12px; align-items: flex-start; }
