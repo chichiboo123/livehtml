@@ -3,16 +3,21 @@
  * 테마(색·글꼴·장식·문구) × 포맷(카드뉴스/포스터/PPT)을 조합해
  * 같은 테마로 통일된 콘텐츠 세트를 만들 수 있다.
  *
+ * 카드뉴스: 표지 → 목차 → 텍스트 → 이미지 → 마무리 멘트 → 아웃트로 (6장)
+ * PPT:     표지 → 목차 → 텍스트 → 이미지 → 끝인사 (5장)
+ * 포스터:  1장
+ *
  * 영감의 원천(오마주): 동화·판타지·명화·음악 등에서 '감성'만 빌려오고
  * 실제 작품의 글·캐릭터·상표는 사용하지 않는다.
  * ============================================================ */
 (function () {
   "use strict";
 
+  // k: 1080 기준으로 디자인된 글자/여백 크기의 배율
   const FORMATS = {
-    cardnews: { id: "cardnews", name: "카드뉴스", w: 1080, h: 1080, icon: "crop_square", k: 1 },
+    cardnews: { id: "cardnews", name: "카드뉴스", w: 1920, h: 1920, icon: "crop_square", k: 1.78 },
     poster:   { id: "poster",   name: "포스터",   w: 794,  h: 1123, icon: "description", k: 0.8 },
-    slides:   { id: "slides",   name: "PPT 슬라이드", w: 1280, h: 720, icon: "slideshow", k: 0.74 },
+    slides:   { id: "slides",   name: "PPT 슬라이드", w: 1920, h: 1080, icon: "slideshow", k: 1.1 },
   };
 
   /* ---------- 장식 헬퍼 ---------- */
@@ -23,29 +28,60 @@
 
   /* ============================================================
    * 테마 정의
-   *  page: 페이지 배경 / pageSolid: 장식용 단색(초승달 등에 사용)
+   *  page: 페이지 배경 / pageSolid: 장식용 단색(행성·달 등에 사용)
    *  surface: 본문 카드 배경 / ink: 글자색 / sub: 보조 글자색
    * ============================================================ */
   const THEMES = [
     {
-      id: "starry", emoji: "🌙", name: "별의 여행자",
-      desc: "사막의 밤하늘과 작은 별 — 동화 같은 감성",
-      tags: ["동화", "밤하늘", "감성", "어린왕자"],
-      page: "linear-gradient(180deg,#0B1D51 0%,#1D3A8F 100%)", pageSolid: "#13296B",
-      ink: "#FFF8E7", sub: "rgba(255,248,231,.78)", primary: "#F5C84C", badgeInk: "#3A2C00",
-      surface: "rgba(255,248,231,.1)", radius: "20px",
+      id: "littleprince", emoji: "🌹", name: "어린왕자",
+      desc: "파스텔 사막의 노을, 작은 별과 장미 한 송이",
+      tags: ["어린왕자", "동화", "파스텔", "별"],
+      page: "linear-gradient(180deg,#FDF2E0 0%,#FBE3C9 60%,#F6D7BC 100%)", pageSolid: "#FCEBD3",
+      ink: "#5A4632", sub: "#9A8569", primary: "#F2B33D", accent: "#8FB8DE", badgeInk: "#5A4400",
+      surface: "rgba(255,255,255,.62)", radius: "22px",
       headFont: "'Gowun Batang', serif", bodyFont: "'Gowun Dodum', sans-serif",
       fonts: ["Gowun Batang", "Gowun Dodum"],
       sample: {
-        badge: "오늘의 이야기", title: "밤하늘을 건너온<br>작은 이야기",
-        sub: "별을 좋아하는 사람에게 들려주고 싶은 내용을<br>여기에 적어 보세요.",
-        outro: "당신의 별에도<br>닿기를 🌟",
+        badge: "B-612에서 온 편지", title: "가장 중요한 건<br>눈에 보이지 않아",
+        sub: "마음으로 읽어 주길 바라는 이야기를<br>여기에 적어 보세요.",
+        outro: "네 장미가 소중한 건,<br>네가 들인 시간 때문이야",
       },
       decor: (t) =>
-        dot(12, 12, 5, t.primary) + dot(22, 7, 3, t.primary) + dot(78, 16, 4, t.primary) +
-        dot(88, 36, 3, t.primary) + dot(8, 42, 3, t.primary) + dot(68, 6, 5, t.primary) +
-        `<div style="position:absolute;top:7%;right:8%;width:84px;height:84px;border-radius:50%;background:${t.primary};"></div>` +
-        `<div style="position:absolute;top:5.6%;right:11%;width:76px;height:76px;border-radius:50%;background:${t.pageSolid};"></div>`,
+        dot(12, 14, 7, t.primary, "opacity:.9;") + dot(22, 8, 4, t.primary, "opacity:.7;") +
+        dot(80, 10, 5, t.accent, "opacity:.8;") + dot(88, 30, 4, t.primary, "opacity:.7;") +
+        dot(7, 38, 4, t.accent, "opacity:.6;") +
+        // 파스텔 행성과 고리
+        `<div style="position:absolute;top:7%;right:8%;width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 32% 30%,#FBD9A8,#F2B97E);"></div>` +
+        `<div style="position:absolute;top:10.4%;right:5%;width:150px;height:30px;border:3px solid ${t.accent};border-radius:50%;transform:rotate(-16deg);opacity:.75;"></div>` +
+        // 장미 한 송이
+        `<div style="position:absolute;left:9%;bottom:9%;width:3px;height:64px;background:#9DBA8B;"></div>` +
+        `<div style="position:absolute;left:9%;bottom:14.5%;width:22px;height:22px;border-radius:50% 50% 50% 0;background:#E08E8E;transform:translateX(-9px) rotate(-45deg);"></div>`,
+    },
+    {
+      id: "ballpark", emoji: "⚾", name: "야구장",
+      desc: "초록 잔디와 워닝트랙 — 9회말의 설렘",
+      tags: ["야구", "스포츠", "잔디", "응원"],
+      page: "linear-gradient(180deg,#2E7D46 0%,#3C9457 78%,#3C9457 100%)", pageSolid: "#338A4E",
+      ink: "#FFFFFF", sub: "rgba(255,255,255,.82)", primary: "#D9483B", accent: "#A4702F", badgeInk: "#FFFFFF",
+      surface: "rgba(255,255,255,.14)", radius: "16px",
+      headFont: "'Black Han Sans', sans-serif", bodyFont: "'Gothic A1', sans-serif",
+      fonts: ["Black Han Sans", "Gothic A1"],
+      sample: {
+        badge: "PLAY BALL", title: "9회말,<br>우리의 이야기가 시작된다",
+        sub: "응원하고 싶은 내용을 적어 보세요.<br>오늘의 선발은 바로 당신!",
+        outro: "끝날 때까지<br>끝난 게 아니다",
+      },
+      decor: (t) =>
+        // 워닝트랙(갈색 띠) + 파울 라인
+        `<div style="position:absolute;left:0;right:0;bottom:0;height:10%;background:${t.accent};"></div>` +
+        `<div style="position:absolute;left:0;right:0;bottom:10%;height:5px;background:#FFFFFF;opacity:.9;"></div>` +
+        // 베이스
+        `<div style="position:absolute;left:8%;top:10%;width:30px;height:30px;background:#F8F4EA;transform:rotate(45deg);opacity:.92;box-shadow:0 2px 4px rgba(0,0,0,.2);"></div>` +
+        // 야구공 (실밥 두 줄)
+        `<div style="position:absolute;top:7%;right:8%;width:76px;height:76px;border-radius:50%;background:#F8F4EA;overflow:hidden;box-shadow:0 3px 8px rgba(0,0,0,.3);">` +
+        `<div style="position:absolute;left:-48px;top:-9px;width:94px;height:94px;border-radius:50%;border:3px dashed ${t.primary};"></div>` +
+        `<div style="position:absolute;right:-48px;top:-9px;width:94px;height:94px;border-radius:50%;border:3px dashed ${t.primary};"></div>` +
+        `</div>`,
     },
     {
       id: "wizard", emoji: "🪄", name: "마법 아카데미",
@@ -190,7 +226,6 @@
       ink: "#5B5147", sub: "#8C8177", primary: "#E58FA6", badgeInk: "#FFFFFF",
       surface: "rgba(229,143,166,.1)", radius: "26px",
       headFont: "'Gowun Dodum', sans-serif", bodyFont: "'Gowun Dodum', sans-serif",
-      accentFont: "'Nanum Pen Script', cursive",
       fonts: ["Gowun Dodum", "Nanum Pen Script"],
       sample: {
         badge: "봄 편지", title: "마음이 몽글몽글<br>피어나는 계절",
@@ -307,18 +342,23 @@
   .sub { font-size: ${px(30, k)}; line-height: 1.65; color: var(--sub); margin: 0; }
   .center { align-items: center; text-align: center; }
   .center .badge { align-self: center; }
-  h2 { font-family: ${t.headFont}; font-size: ${px(52, k)}; font-weight: 800; margin: 0 0 ${px(36, k)}; }
-  .item { display: flex; gap: ${px(22, k)}; align-items: flex-start; background: var(--surface); border-radius: ${t.radius}; padding: ${px(28, k)} ${px(32, k)}; margin-bottom: ${px(20, k)}; }
-  .num { font-family: ${t.headFont}; font-size: ${px(34, k)}; font-weight: 800; color: var(--primary); line-height: 1.2; }
-  .item h3 { font-size: ${px(30, k)}; margin: 0 0 ${px(6, k)}; }
-  .item p { font-size: ${px(24, k)}; line-height: 1.6; color: var(--sub); margin: 0; }
+  h2 { font-family: ${t.headFont}; font-size: ${px(52, k)}; font-weight: 800; margin: 0 0 ${px(40, k)}; }
+  .toc-row { display: flex; align-items: baseline; gap: ${px(24, k)}; font-size: ${px(34, k)}; padding: ${px(24, k)} ${px(6, k)}; border-bottom: 1.5px dashed var(--sub); }
+  .toc-row .num { font-family: ${t.headFont}; font-size: ${px(30, k)}; font-weight: 800; color: var(--primary); }
+  .body-text { font-size: ${px(28, k)}; line-height: 1.85; margin: 0 0 ${px(22, k)}; }
+  .hl { background: var(--surface); border-left: ${px(8, k)} solid var(--primary); border-radius: ${t.radius}; padding: ${px(24, k)} ${px(30, k)}; font-size: ${px(27, k)}; line-height: 1.7; margin-top: ${px(10, k)}; }
+  .imgph { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: ${px(12, k)}; height: 52%; border: 3px dashed var(--sub); border-radius: ${t.radius}; background: var(--surface); color: var(--sub); font-size: ${px(26, k)}; text-align: center; line-height: 1.6; }
+  .imgph .ph-ic { font-size: ${px(64, k)}; line-height: 1; }
+  .caption { margin-top: ${px(18, k)}; font-size: ${px(23, k)}; color: var(--sub); text-align: center; }
+  .quote-mark { font-family: ${t.headFont}; font-size: ${px(96, k)}; line-height: .8; color: var(--primary); }
+  .quote { font-family: ${t.headFont}; font-size: ${px(60, k)}; font-weight: 800; line-height: 1.5; margin: ${px(18, k)} 0 ${px(22, k)}; }
+  .cta { display: flex; gap: ${px(14, k)}; justify-content: center; flex-wrap: wrap; margin-top: ${px(34, k)}; }
+  .cta span { background: var(--surface); border-radius: 999px; padding: ${px(12, k)} ${px(26, k)}; font-size: ${px(25, k)}; font-weight: 700; }
   .foot { position: absolute; left: ${px(100, k)}; bottom: ${px(56, k)}; font-size: ${px(22, k)}; font-weight: 700; color: var(--sub); }
+  .pagenum { position: absolute; right: ${px(60, k)}; bottom: ${px(48, k)}; font-size: ${px(21, k)}; font-weight: 700; color: var(--sub); }
   .info { background: var(--surface); border-radius: ${t.radius}; padding: ${px(30, k)} ${px(36, k)}; margin-top: ${px(40, k)}; }
   .row { display: flex; gap: ${px(18, k)}; font-size: ${px(26, k)}; line-height: 1.6; margin: ${px(8, k)} 0; }
   .row b { flex: none; width: ${px(96, k)}; color: var(--primary); }
-  .bullet { display: flex; gap: ${px(16, k)}; align-items: flex-start; margin-bottom: ${px(22, k)}; }
-  .bullet .bd { flex: none; width: ${px(14, k)}; height: ${px(14, k)}; border-radius: 50%; background: var(--primary); margin-top: ${px(12, k)}; }
-  .bullet p { font-size: ${px(28, k)}; line-height: 1.6; margin: 0; }
   .decor { position: absolute; inset: 0; pointer-events: none; }`;
   }
 
@@ -333,38 +373,71 @@ ${fontLinks(t.fonts)}
 </head>
 <body>`;
 
-  const decorOf = (t) => `<div class="decor">${t.decor(t)}</div>`;
+  /** 장식은 1080 기준 px로 그려졌으므로 포맷 배율(k)에 맞춰 통째로 확대/축소 */
+  function decorOf(t, k) {
+    const inv = (100 / k).toFixed(4);
+    return `<div class="decor"><div style="position:absolute;left:0;top:0;width:${inv}%;height:${inv}%;transform:scale(${k});transform-origin:top left;">${t.decor(t)}</div></div>`;
+  }
 
-  function coverPage(t, extraClass = "") {
-    return `  <div class="page center ${extraClass}">
-    ${decorOf(t)}
+  /* ---------- 페이지들 ---------- */
+  const coverPage = (t, fmt) => `  <div class="page center">
+    ${decorOf(t, fmt.k)}
     <span class="badge">${t.sample.badge}</span>
     <h1>${t.sample.title}</h1>
     <p class="sub">${t.sample.sub}</p>
     <div class="foot" style="left:50%;transform:translateX(-50%);">@내이름</div>
   </div>`;
-  }
 
-  function listPage(t) {
-    return `  <div class="page">
-    <h2>이렇게 정리해요</h2>
-    <div class="item"><span class="num">01</span><div><h3>첫 번째 이야기</h3><p>내용을 입력하세요. 두 번 누르면 바로 고칠 수 있어요.</p></div></div>
-    <div class="item"><span class="num">02</span><div><h3>두 번째 이야기</h3><p>내용을 입력하세요.</p></div></div>
-    <div class="item"><span class="num">03</span><div><h3>세 번째 이야기</h3><p>내용을 입력하세요.</p></div></div>
+  const tocPage = (t, fmt, total) => `  <div class="page">
+    <h2>목차</h2>
+    <div class="toc-row"><span class="num">01</span><span>첫 번째 이야기 — 제목을 적어 주세요</span></div>
+    <div class="toc-row"><span class="num">02</span><span>두 번째 이야기 — 제목을 적어 주세요</span></div>
+    <div class="toc-row"><span class="num">03</span><span>세 번째 이야기 — 제목을 적어 주세요</span></div>
+    <div class="toc-row" style="border-bottom:none;"><span class="num">04</span><span>마무리하며</span></div>
+    <span class="pagenum">2 / ${total}</span>
   </div>`;
-  }
 
-  function outroPage(t) {
-    return `  <div class="page center">
-    ${decorOf(t)}
-    <h1>${t.sample.outro}</h1>
-    <p class="sub">좋아요 · 저장 · 공유가 큰 힘이 돼요.</p>
+  const textPage = (t, fmt, total) => `  <div class="page">
+    <h2>01. 첫 번째 이야기</h2>
+    <p class="body-text">본문 내용을 입력하세요. 두 번 누르면 바로 고칠 수 있어요.
+    문장은 짧게, 줄은 여유 있게 쓰면 읽기 편한 카드가 됩니다.</p>
+    <p class="body-text">이어지는 내용을 적어 보세요. 숫자나 사례를 곁들이면
+    설득력이 높아져요.</p>
+    <div class="hl">💡 꼭 기억할 한 문장을 여기에 강조해 보세요.</div>
+    <span class="pagenum">3 / ${total}</span>
   </div>`;
-  }
 
-  function posterPage(t) {
-    return `  <div class="page">
-    ${decorOf(t)}
+  const imagePage = (t, fmt, total) => `  <div class="page">
+    <h2>02. 두 번째 이야기</h2>
+    <div class="imgph"><span class="ph-ic">🖼️</span>이 상자를 지우고, 오른쪽 아래 + 버튼으로<br>이미지를 넣어 주세요</div>
+    <p class="caption">이미지 설명(캡션)을 적어 주세요.</p>
+    <span class="pagenum">4 / ${total}</span>
+  </div>`;
+
+  const closingPage = (t, fmt, total) => `  <div class="page center">
+    ${decorOf(t, fmt.k)}
+    <div class="quote-mark">“</div>
+    <div class="quote">${t.sample.outro}</div>
+    <p class="sub">마음에 남길 한 문장으로 마무리해 보세요.</p>
+    <span class="pagenum">5 / ${total}</span>
+  </div>`;
+
+  const outroPage = (t, fmt) => `  <div class="page center">
+    ${decorOf(t, fmt.k)}
+    <span class="badge">@내이름</span>
+    <h1>함께 읽어 주셔서<br>고마워요</h1>
+    <p class="sub">다음 이야기로 또 만나요!</p>
+    <div class="cta"><span>❤️ 좋아요</span><span>📌 저장</span><span>✈️ 공유</span></div>
+  </div>`;
+
+  const thanksPage = (t, fmt) => `  <div class="page center">
+    ${decorOf(t, fmt.k)}
+    <h1>감사합니다</h1>
+    <p class="sub">질문은 언제든 환영해요 · @내이름</p>
+  </div>`;
+
+  const posterPage = (t, fmt) => `  <div class="page">
+    ${decorOf(t, fmt.k)}
     <span class="badge">${t.sample.badge}</span>
     <h1>${t.sample.title}</h1>
     <p class="sub">${t.sample.sub}</p>
@@ -375,33 +448,21 @@ ${fontLinks(t.fonts)}
     </div>
     <div class="foot">주최 · 주관 | 단체 이름</div>
   </div>`;
-  }
-
-  function slidePages(t) {
-    return `  <div class="page center">
-    ${decorOf(t)}
-    <span class="badge">${t.sample.badge}</span>
-    <h1>${t.sample.title}</h1>
-    <p class="sub">발표자 이름 · 날짜</p>
-  </div>
-
-  <div class="page">
-    <h2>핵심 내용</h2>
-    <div class="bullet"><span class="bd"></span><p>첫 번째 핵심 내용을 입력하세요.</p></div>
-    <div class="bullet"><span class="bd"></span><p>두 번째 핵심 내용을 입력하세요.</p></div>
-    <div class="bullet"><span class="bd"></span><p>세 번째 핵심 내용을 입력하세요.</p></div>
-    <div class="foot">${t.name} · 2/2</div>
-  </div>`;
-  }
 
   function buildTemplate(themeId, formatId) {
     const t = THEMES.find((x) => x.id === themeId);
     const fmt = FORMATS[formatId] || FORMATS.cardnews;
     if (!t) return buildBlank(formatId);
     let body;
-    if (fmt.id === "poster") body = posterPage(t);
-    else if (fmt.id === "slides") body = slidePages(t);
-    else body = [coverPage(t), listPage(t), outroPage(t)].join("\n\n");
+    if (fmt.id === "poster") {
+      body = posterPage(t, fmt);
+    } else if (fmt.id === "slides") {
+      // 표지 → 목차 → 텍스트 → 이미지 → 끝인사 (5장)
+      body = [coverPage(t, fmt), tocPage(t, fmt, 5), textPage(t, fmt, 5), imagePage(t, fmt, 5), thanksPage(t, fmt)].join("\n\n");
+    } else {
+      // 표지 → 목차 → 텍스트 → 이미지 → 마무리 멘트 → 아웃트로 (6장)
+      body = [coverPage(t, fmt), tocPage(t, fmt, 6), textPage(t, fmt, 6), imagePage(t, fmt, 6), closingPage(t, fmt, 6), outroPage(t, fmt)].join("\n\n");
+    }
     return `${head(t, fmt, `${t.name} ${fmt.name}`)}
 ${body}
 </body>

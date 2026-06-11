@@ -1993,10 +1993,10 @@
    * 원본 크기는 data-lh-mc-w/h에 보존되어 몇 번이고 다시 변환 가능.
    * ============================================================ */
   const MC_FORMATS = [
-    { id: "cardnews", name: "카드뉴스 정사각", w: 1080, h: 1080, icon: "crop_square", sub: "인스타그램 피드" },
+    { id: "cardnews", name: "카드뉴스 정사각", w: 1920, h: 1920, icon: "crop_square", sub: "인스타그램 피드 · 고해상도" },
     { id: "story", name: "세로형 · 스토리", w: 1080, h: 1920, icon: "crop_portrait", sub: "릴스 · 스토리 · 세로 포스터" },
     { id: "poster", name: "포스터 A4", w: 794, h: 1123, icon: "description", sub: "인쇄용 세로 A4" },
-    { id: "slides", name: "PPT 슬라이드", w: 1280, h: 720, icon: "slideshow", sub: "16:9 발표 화면" },
+    { id: "slides", name: "PPT 슬라이드", w: 1920, h: 1080, icon: "slideshow", sub: "16:9 발표 화면 (FHD)" },
   ];
 
   const mcModal = $("#mcModal");
