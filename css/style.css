@@ -349,6 +349,7 @@ body:not(.has-content) .preview-canvas { display: none; }
 .tool-btn:hover { background: var(--c-bg); }
 .tool-btn:active { background: var(--c-primary-soft); }
 .tool-btn.danger { color: var(--c-danger); }
+.tool-btn.locked { color: var(--c-danger); background: var(--c-danger-soft); }
 .tool-btn.danger:hover { background: var(--c-danger-soft); }
 .tool-btn.close { margin-left: auto; color: var(--c-text-sub); }
 .color-btn input[type="color"] {
