@@ -342,7 +342,11 @@
       <label class="cloud-field">
         <span class="cloud-label">Apps Script 웹 앱 주소</span>
         <input type="url" id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false" />
-        <span class="cloud-saved" id="cloudSaved" hidden><span class="material-symbols-outlined">check_circle</span>주소가 저장됐어요. 다시 입력하지 않아도 돼요.</span>
+      </label>
+      <label class="cloud-field">
+        <span class="cloud-label">비밀번호 (스크립트 속성의 SECRET과 동일하게)</span>
+        <input type="password" id="gasToken" placeholder="내가 정한 비밀번호" autocomplete="new-password" spellcheck="false" />
+        <span class="cloud-saved" id="cloudSaved" hidden><span class="material-symbols-outlined">check_circle</span>주소·비밀번호가 이 브라우저에 저장됐어요. 다시 입력하지 않아도 돼요.</span>
       </label>
       <label class="cloud-toggle">
         <input type="checkbox" id="autoSyncChk" />
@@ -356,11 +360,13 @@
         <summary>처음 연결하는 방법 (1번만 하면 돼요)</summary>
         <ol>
           <li><strong>script.google.com</strong>에서 새 프로젝트를 만들고, 저장소의 <code>gas/Code.gs</code> 내용을 붙여넣어요.</li>
+          <li>[프로젝트 설정 ⚙️] → [스크립트 속성]에 <strong>SECRET</strong> = 내가 정한 비밀번호를 추가해요.</li>
           <li>[배포] → [새 배포] → 유형 <strong>웹 앱</strong> → 액세스 <strong>모든 사용자</strong>로 배포해요.</li>
-          <li>발급된 <code>…/exec</code> 주소를 위 칸에 붙여넣으면 끝! (한 번만 하면 계속 기억해요)</li>
+          <li>발급된 <code>…/exec</code> 주소와 위 비밀번호를 칸에 넣으면 끝! (이 브라우저에 계속 기억돼요)</li>
           <li>코드를 고쳤다면 [배포 관리 → 수정 → 새 버전]으로 다시 배포해야 반영돼요.</li>
         </ol>
-        <p class="cloud-warn">⚠️ 이 주소를 아는 사람은 백업을 읽고 쓸 수 있으니 비밀로 관리하세요.</p>
+        <p class="cloud-warn">🔒 비밀번호는 스크립트 속성(서버)에만 두고 코드에 넣지 않아요. 주소가 노출돼도
+        비밀번호를 모르면 백업을 읽거나 쓸 수 없어요.</p>
       </details>
     </div>
 

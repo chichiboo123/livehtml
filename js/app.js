@@ -13,6 +13,7 @@
    * ============================================================ */
   const CONFIG = {
     GAS_URL: "",
+    GAS_TOKEN: "",   // 비밀번호. 보통은 비워 두고 앱에서 한 번만 입력하세요(공개 저장소 노출 방지)
     AUTO_SYNC: false,
   };
 
@@ -2045,15 +2046,22 @@
    * ============================================================ */
   const DESIGNS_KEY = "livehtml:designs";
   const GAS_KEY = "livehtml:gasUrl";
+  const GAS_TOKEN_KEY = "livehtml:gasToken";
   const AUTOSYNC_KEY = "livehtml:autoSync";
   const adminOverlay = $("#adminOverlay");
   const designListEl = $("#designList");
   const gasUrlInput = $("#gasUrl");
+  const gasTokenInput = $("#gasToken");
 
   // 저장된 GAS 주소: 코드에 박아둔 값(CONFIG) → 브라우저 저장값 순으로 사용
   function savedGasUrl() {
     try { return (localStorage.getItem(GAS_KEY) || CONFIG.GAS_URL || "").trim(); }
     catch (_) { return (CONFIG.GAS_URL || "").trim(); }
+  }
+  // 비밀번호(토큰): 절대 코드/저장소에 넣지 않고 이 브라우저에만 저장 → 외부 노출 방지
+  function savedGasToken() {
+    try { return (localStorage.getItem(GAS_TOKEN_KEY) || CONFIG.GAS_TOKEN || "").trim(); }
+    catch (_) { return (CONFIG.GAS_TOKEN || "").trim(); }
   }
   let autoSync = false;
   try {
@@ -2311,6 +2319,7 @@
 
   function openAdmin() {
     gasUrlInput.value = savedGasUrl();
+    gasTokenInput.value = savedGasToken();
     $("#autoSyncChk").checked = autoSync;
     setAdminUnlocked(true);
     renderDesigns();
@@ -2351,11 +2360,17 @@
   });
 
   /* ---- Google Apps Script 클라우드 ---- */
-  // 주소를 입력하는 즉시 브라우저에 저장 (다시 입력할 필요 없음)
+  // 주소·비밀번호를 입력하는 즉시 이 브라우저에 저장 (다시 입력할 필요 없음)
   gasUrlInput.addEventListener("input", () => {
     const url = gasUrlInput.value.trim();
     try { localStorage.setItem(GAS_KEY, url); } catch (_) {}
-    $("#cloudSaved").hidden = !url;
+    $("#cloudSaved").hidden = !(url && savedGasToken());
+    updateCloudStatus();
+  });
+  gasTokenInput.addEventListener("input", () => {
+    const tok = gasTokenInput.value.trim();
+    try { localStorage.setItem(GAS_TOKEN_KEY, tok); } catch (_) {}
+    $("#cloudSaved").hidden = !(tok && savedGasUrl());
     updateCloudStatus();
   });
   $("#autoSyncChk").addEventListener("change", (e) => {
@@ -2387,9 +2402,11 @@
 
   function updateCloudStatus() {
     const has = !!savedGasUrl();
+    const hasTok = !!savedGasToken();
     $("#cloudDot").hidden = !has;
-    $("#cloudSaved").hidden = !has;
+    $("#cloudSaved").hidden = !(has && hasTok);
     if (!has) { setCloudStatus("", "클라우드가 연결되지 않았어요 (선택 사항)"); return; }
+    if (!hasTok) { setCloudStatus("", "비밀번호를 입력하면 연결돼요 (스크립트 속성의 SECRET)"); return; }
     if (autoSync) {
       setCloudStatus("ok", lastSyncAt
         ? `자동 저장 켜짐 · 마지막 백업 ${relTime(lastSyncAt)}`
@@ -2413,9 +2430,10 @@
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "backup", designs }),
+        body: JSON.stringify({ action: "backup", token: savedGasToken(), designs }),
       });
       const j = await res.json();
+      if (j.error === "auth") throw new Error("auth");
       if (!j.ok) throw new Error(j.error || "backup failed");
       lastSyncAt = Date.now();
       try { localStorage.setItem("livehtml:lastSync", String(lastSyncAt)); } catch (_) {}
@@ -2424,8 +2442,11 @@
       return true;
     } catch (err) {
       console.error(err);
-      setCloudStatus("err", "백업 실패 — 주소·배포 설정을 확인하세요");
-      if (!silent) toast("백업에 실패했어요. 주소와 배포(액세스: 모든 사용자)를 확인하세요", "error", true);
+      const isAuth = String(err.message) === "auth";
+      setCloudStatus("err", isAuth ? "비밀번호가 일치하지 않아요" : "백업 실패 — 주소·배포 설정을 확인하세요");
+      if (!silent) toast(isAuth
+        ? "비밀번호가 스크립트 속성의 SECRET과 달라요"
+        : "백업에 실패했어요. 주소와 배포(액세스: 모든 사용자)를 확인하세요", "error", true);
       return false;
     }
   }
@@ -2441,23 +2462,34 @@
     btn.disabled = true;
     setCloudStatus("sync", "클라우드에서 불러오는 중…");
     try {
-      const res = await fetch(url + (url.includes("?") ? "&" : "?") + "action=restore");
-      const arr = await res.json();
-      if (!Array.isArray(arr)) throw new Error("invalid data");
+      const q = "action=restore&token=" + encodeURIComponent(savedGasToken());
+      const res = await fetch(url + (url.includes("?") ? "&" : "?") + q);
+      const data = await res.json();
+      if (data && data.ok === false) throw new Error(data.error || "restore failed");
+      if (!Array.isArray(data)) throw new Error("invalid data");
+      if (!data.length) {
+        updateCloudStatus();
+        toast("클라우드에 저장된 디자인이 아직 없어요. 먼저 [지금 바로 백업]을 해보세요", "info", true);
+        return;
+      }
       if (designs.length &&
-          !confirm(`클라우드에 디자인 ${arr.length}개가 있어요.\n이 기기의 ${designs.length}개를 클라우드 내용으로 바꿀까요?\n(이 기기에만 있는 디자인은 사라져요)`)) {
+          !confirm(`클라우드에 디자인 ${data.length}개가 있어요.\n이 기기의 ${designs.length}개를 클라우드 내용으로 바꿀까요?\n(이 기기에만 있는 디자인은 사라져요)`)) {
         updateCloudStatus();
         return;
       }
-      designs = arr;
+      designs = data;
       try { localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs)); } catch (_) {}
+      setCurrentDesign(null);
       renderDesigns();
       updateCloudStatus();
-      toast(`클라우드에서 디자인 ${arr.length}개를 가져왔어요`, "cloud_download");
+      toast(`클라우드에서 디자인 ${data.length}개를 가져왔어요`, "cloud_download");
     } catch (err) {
       console.error(err);
-      setCloudStatus("err", "불러오기 실패 — 주소·배포 설정을 확인하세요");
-      toast("불러오기에 실패했어요. 주소와 배포 설정을 확인하세요", "error", true);
+      const isAuth = String(err.message) === "auth";
+      setCloudStatus("err", isAuth ? "비밀번호가 일치하지 않아요" : "불러오기 실패 — 주소·배포 설정을 확인하세요");
+      toast(isAuth
+        ? "비밀번호가 스크립트 속성의 SECRET과 달라요"
+        : "불러오기에 실패했어요. 주소와 배포 설정을 확인하세요", "error", true);
     } finally {
       btn.disabled = false;
     }
