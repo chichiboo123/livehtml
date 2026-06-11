@@ -30,6 +30,7 @@
   const insertFab = $("#insertFab");
   const insertPanel = $("#insertPanel");
   const effectPanel = $("#effectPanel");
+  const fillPanel = $("#fillPanel");
 
   const H2C_SRC = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
   const JSZIP_SRC = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
@@ -262,6 +263,7 @@
     if (!selectedEl) return;
     closeInsertPanel();
     closeEffectPanel();
+    closeFillPanel();
     loadFontPreviews();
     buildFontList(fontSearch.value);
     fontPanel.hidden = false;
@@ -284,6 +286,10 @@
     if (!effectPanel.hidden && !effectPanel.contains(e.target) &&
         !(e.target.closest && e.target.closest("[data-act='effects']"))) {
       closeEffectPanel();
+    }
+    if (!fillPanel.hidden && !fillPanel.contains(e.target) &&
+        !(e.target.closest && e.target.closest("[data-act='fill']"))) {
+      closeFillPanel();
     }
   });
 
@@ -532,6 +538,7 @@
     editToolbar.hidden = true;
     closeFontPanel();
     closeEffectPanel();
+    closeFillPanel();
     removeGuides();
     updateHandles();
   }
@@ -546,6 +553,7 @@
     editToolbar.hidden = false;
     closeFontPanel();
     closeEffectPanel();
+    // 배경색 패널은 유지 — 다음 페이지를 선택해서 최근 색을 바로 쓸 수 있게
     updateFontChip();
     updateFontSizeInput();
     updateHandles();
@@ -949,6 +957,9 @@
         updateHandles();
         toast("위치와 회전을 되돌렸어요", "restart_alt");
         break;
+      case "fill":
+        fillPanel.hidden ? openFillPanel() : closeFillPanel();
+        return;
       case "effects":
         effectPanel.hidden ? openEffectPanel() : closeEffectPanel();
         return;
@@ -975,13 +986,86 @@
     selectedEl.style.color = e.target.value;
     syncFromPreviewDebounced();
   });
+  // 글자 색으로 고른 색도 '최근 사용한 색'에 모아 배경색에서 재사용
+  $("#colorPicker").addEventListener("change", (e) => recordRecentColor(e.target.value));
 
-  // 배경(채우기) 색 — 페이지·도형·텍스트 상자 모두 적용 (그라데이션도 단색으로 교체)
-  $("#fillPicker").addEventListener("input", (e) => {
+  /* ---- 배경(채우기) 색 패널 — 최근 사용한 색 재사용 ---- */
+  const RECENT_COLORS_KEY = "livehtml:recentColors";
+  const BASIC_COLORS = [
+    "#FFFFFF", "#1E2124", "#6D7882", "#CDD1D5",
+    "#EB003B", "#FF7A2E", "#FFD338", "#2EA66A",
+    "#00A5B8", "#246BEB", "#18408C", "#8A2BE2",
+    "#FF7B9B", "#FFE8EE", "#ECF2FE", "#F4F5F6",
+  ];
+  let recentColors = [];
+  try { recentColors = JSON.parse(localStorage.getItem(RECENT_COLORS_KEY)) || []; } catch (_) {}
+
+  function recordRecentColor(color) {
+    const c = color.toUpperCase();
+    recentColors = [c, ...recentColors.filter((x) => x !== c)].slice(0, 16);
+    try { localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify(recentColors)); } catch (_) {}
+    renderRecentSwatches();
+  }
+
+  function makeSwatch(color, title) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "swatch";
+    b.style.background = color;
+    b.title = title || color;
+    b.addEventListener("click", () => applyFill(color));
+    return b;
+  }
+
+  function renderRecentSwatches() {
+    const wrap = $("#recentSwatches");
+    wrap.innerHTML = "";
+    if (!recentColors.length) {
+      wrap.innerHTML = `<div class="swatch-empty">색을 고르면 여기에 모여요. 다음 페이지에서 바로 다시 쓸 수 있어요!</div>`;
+      return;
+    }
+    recentColors.forEach((c) => wrap.appendChild(makeSwatch(c)));
+  }
+
+  function renderBasicSwatches() {
+    const wrap = $("#basicSwatches");
+    wrap.innerHTML = "";
+    const none = document.createElement("button");
+    none.type = "button";
+    none.className = "swatch none";
+    none.title = "배경 없음 (원래대로)";
+    none.addEventListener("click", () => {
+      if (!selectedEl) return;
+      selectedEl.style.removeProperty("background");
+      selectedEl.style.removeProperty("background-color");
+      syncFromPreview();
+    });
+    wrap.appendChild(none);
+    BASIC_COLORS.forEach((c) => wrap.appendChild(makeSwatch(c)));
+  }
+
+  /** 배경색 적용 — 페이지·도형·텍스트 상자 모두 (그라데이션도 단색으로 교체) */
+  function applyFill(color, { record = true } = {}) {
     if (!selectedEl) return;
-    selectedEl.style.background = e.target.value;
+    selectedEl.style.background = color;
     syncFromPreviewDebounced();
-  });
+    if (record) recordRecentColor(color);
+  }
+
+  function openFillPanel() {
+    if (!selectedEl) return;
+    closeFontPanel();
+    closeEffectPanel();
+    closeInsertPanel();
+    renderRecentSwatches();
+    fillPanel.hidden = false;
+  }
+  function closeFillPanel() { fillPanel.hidden = true; }
+
+  renderBasicSwatches();
+  // 직접 고르기: 끄는 동안은 실시간 반영만, 손을 떼면 최근 색에 기록
+  $("#fillPicker").addEventListener("input", (e) => applyFill(e.target.value, { record: false }));
+  $("#fillPicker").addEventListener("change", (e) => recordRecentColor(e.target.value));
 
   /* ---- 글자 효과 (그림자/외곽선/네온/입체) ---- */
   function hexToRgba(hex, a) {
@@ -1011,6 +1095,7 @@
     if (!selectedEl) return;
     closeFontPanel();
     closeInsertPanel();
+    closeFillPanel();
     effectPanel.hidden = false;
   }
   function closeEffectPanel() { effectPanel.hidden = true; }
@@ -1688,6 +1773,7 @@
     } else if (e.key === "Escape") {
       if (!fontPanel.hidden) closeFontPanel();
       else if (!effectPanel.hidden) closeEffectPanel();
+      else if (!fillPanel.hidden) closeFillPanel();
       else if (!insertPanel.hidden) closeInsertPanel();
       else if (!downloadModal.hidden) closeDownloadModal();
       else if (!templateModal.hidden) closeTemplates();

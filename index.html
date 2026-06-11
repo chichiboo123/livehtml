@@ -110,10 +110,7 @@
             <span class="material-symbols-outlined">format_color_text</span>
             <input type="color" id="colorPicker" />
           </label>
-          <label class="tool-btn color-btn" title="배경(채우기) 색">
-            <span class="material-symbols-outlined">format_color_fill</span>
-            <input type="color" id="fillPicker" />
-          </label>
+          <button class="tool-btn" data-act="fill" title="배경(채우기) 색"><span class="material-symbols-outlined">format_color_fill</span></button>
           <button class="tool-btn" data-act="effects" title="글자 효과"><span class="material-symbols-outlined">auto_fix_high</span></button>
         </div>
         <div class="tool-group">
@@ -151,6 +148,15 @@
           <button class="effect-item" data-effect="d3"><span class="fx" style="text-shadow:1px 1px 0 #B0B8C1,2px 2px 0 #B0B8C1,3px 3px 0 #B0B8C1">가나</span><small>입체</small></button>
         </div>
         <label class="effect-color"><span>효과 색상</span><input type="color" id="effectColor" value="#222222" /></label>
+      </div>
+
+      <!-- 배경(채우기) 색 패널 -->
+      <div class="font-panel color-panel" id="fillPanel" hidden>
+        <div class="font-group-title" style="padding-top:12px">최근 사용한 색</div>
+        <div class="swatch-grid" id="recentSwatches"><!-- JS로 생성 --></div>
+        <div class="font-group-title">기본 색</div>
+        <div class="swatch-grid" id="basicSwatches"><!-- JS로 생성 --></div>
+        <label class="effect-color"><span>직접 고르기</span><input type="color" id="fillPicker" value="#246BEB" /></label>
       </div>
 
       <div class="preview-viewport" id="previewViewport">

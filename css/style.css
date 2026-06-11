@@ -507,6 +507,37 @@ body:not(.has-content) .preview-canvas { display: none; }
 }
 .effect-color input { width: 36px; height: 28px; border: none; padding: 0; background: none; cursor: pointer; }
 
+/* 배경(채우기) 색 패널 */
+.color-panel { width: min(300px, calc(100% - 20px)); padding-bottom: 12px; }
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  padding: 4px 12px 6px;
+}
+.swatch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(0,0,0,.14);
+  border-radius: 7px;
+  cursor: pointer;
+  padding: 0;
+  transition: transform .08s, box-shadow .12s;
+}
+.swatch:hover { transform: scale(1.12); box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+.swatch.none {
+  background:
+    linear-gradient(to top right, transparent 44%, #EB003B 46%, #EB003B 54%, transparent 56%),
+    #fff;
+}
+.swatch-empty {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--c-text-sub);
+  padding: 4px 2px 6px;
+}
+
 /* ---- 빈 상태 ---- */
 .empty-state {
   position: absolute;
