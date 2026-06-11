@@ -30,6 +30,12 @@
           <span class="material-symbols-outlined">redo</span>
         </button>
       </div>
+      <button id="btnSaveDesign" class="btn btn-secondary admin-only" hidden title="내 디자인에 저장 (Ctrl+S)">
+        <span class="material-symbols-outlined">save</span><span class="btn-label">저장</span>
+      </button>
+      <button id="btnMyDesigns" class="btn btn-tertiary admin-only" hidden title="내 디자인 대시보드 열기/닫기">
+        <span class="material-symbols-outlined">dashboard</span><span class="btn-label">내 디자인</span>
+      </button>
       <button id="btnHelp" class="btn btn-icon" title="사용 방법" aria-label="사용 방법">
         <span class="material-symbols-outlined">help</span>
       </button>
@@ -317,7 +323,10 @@
         <button id="adminCloudBtn" class="btn btn-tertiary btn-sm">
           <span class="material-symbols-outlined">cloud</span><span class="btn-label">클라우드</span>
         </button>
-        <button id="adminClose" class="btn btn-icon" aria-label="닫기"><span class="material-symbols-outlined">close</span></button>
+        <button id="adminLock" class="btn btn-icon" title="관리자 버튼 숨기기 (로고 5번 클릭으로 다시 열기)" aria-label="관리자 버튼 숨기기">
+          <span class="material-symbols-outlined">lock</span>
+        </button>
+        <button id="adminClose" class="btn btn-icon" title="편집으로 돌아가기" aria-label="편집으로 돌아가기"><span class="material-symbols-outlined">close</span></button>
       </div>
     </header>
     <div class="cloud-panel" id="cloudPanel" hidden>

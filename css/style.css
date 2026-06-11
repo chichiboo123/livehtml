@@ -1074,6 +1074,28 @@ body.mode-view .insert-fab { display: none; }
 .admin-empty .material-symbols-outlined { font-size: 52px; color: var(--c-border); }
 .admin-empty[hidden] { display: none; }
 
+/* 헤더의 관리자 버튼 / 편집 중인 디자인 표시 */
+#btnMyDesigns.active {
+  background: var(--c-primary-soft);
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
+.design-card.current {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 2px rgba(36,107,235,.22);
+}
+.current-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--c-primary);
+  border-radius: 999px;
+  vertical-align: 2px;
+}
+
 @media (max-width: 600px) {
   .admin-tools .btn-label { display: none; }
   .design-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
@@ -1153,6 +1175,9 @@ body.mode-view .insert-fab { display: none; }
   .toast-wrap { bottom: calc(var(--tabbar-h) + 44px); }
   .insert-fab { right: 12px; bottom: 12px; width: 48px; height: 48px; }
   .insert-panel { right: 12px; bottom: 68px; }
+  /* 관리자 버튼이 보일 때는 공간 확보를 위해 아이콘만 표시 */
+  .admin-only .btn-label { display: none; }
+  body.admin-unlocked .brand-name { display: none; }
 }
 
 /* 아주 좁은 화면: 패널 제목 글자를 숨겨 도구가 깨지지 않게 */

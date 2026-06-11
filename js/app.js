@@ -1455,6 +1455,7 @@
     const reader = new FileReader();
     reader.onload = () => {
       setCode(String(reader.result));
+      setCurrentDesign(null); // 새 파일은 기존 디자인과 연결 끊기
       toast(`'${file.name}' 파일을 불러왔어요`, "upload_file");
       switchTab("preview");
     };
@@ -1474,6 +1475,7 @@
         return;
       }
       setCode(text);
+      setCurrentDesign(null);
       toast("클립보드 내용을 불러왔어요", "content_paste");
       switchTab("preview");
     } catch (_) {
@@ -1493,6 +1495,7 @@
     if (!codeInput.value.trim()) return;
     if (!confirm("작성 중인 내용을 모두 지울까요?")) return;
     setCode("");
+    setCurrentDesign(null);
     toast("내용을 지웠어요", "delete_sweep");
   });
 
@@ -1790,7 +1793,10 @@
       nudgeSelected(dx, dy);
     } else if (mod && e.key.toLowerCase() === "s") {
       e.preventDefault();
-      if (codeInput.value.trim()) downloadHTML();
+      if (!codeInput.value.trim()) return;
+      // 관리자 모드에서는 내 디자인에 저장, 아니면 HTML 파일 다운로드
+      if (adminUnlocked) saveToCurrent();
+      else downloadHTML();
     }
   });
 
@@ -1988,6 +1994,7 @@
         card.addEventListener("click", () => {
           if (codeInput.value.trim() && !confirm("지금 작업 중인 내용을 이 템플릿으로 바꿀까요?")) return;
           setCode(t.html);
+          setCurrentDesign(null);
           closeTemplates();
           switchTab("preview");
           toast(`'${t.name}' 템플릿을 불러왔어요. 화면을 눌러서 고쳐보세요!`, "space_dashboard");
@@ -2018,6 +2025,42 @@
   let designs = [];
   try { designs = JSON.parse(localStorage.getItem(DESIGNS_KEY)) || []; } catch (_) {}
   let adminView = localStorage.getItem("livehtml:adminView") || "card";
+
+  // 관리자 모드는 한 번 열면 헤더에 [저장]/[내 디자인] 버튼이 계속 보임
+  let adminUnlocked = false;
+  try { adminUnlocked = localStorage.getItem("livehtml:adminUnlocked") === "1"; } catch (_) {}
+  // 지금 편집 중인 디자인 (헤더 [저장]이 여기에 바로 덮어씀)
+  let currentDesignId = null;
+  try { currentDesignId = localStorage.getItem("livehtml:currentDesign") || null; } catch (_) {}
+
+  function currentDesign() {
+    return designs.find((d) => d.id === currentDesignId) || null;
+  }
+
+  function setCurrentDesign(id) {
+    currentDesignId = id;
+    try {
+      if (id) localStorage.setItem("livehtml:currentDesign", id);
+      else localStorage.removeItem("livehtml:currentDesign");
+    } catch (_) {}
+    updateAdminUI();
+  }
+
+  function setAdminUnlocked(on) {
+    adminUnlocked = on;
+    try { localStorage.setItem("livehtml:adminUnlocked", on ? "1" : "0"); } catch (_) {}
+    updateAdminUI();
+  }
+
+  function updateAdminUI() {
+    if (currentDesignId && !currentDesign()) currentDesignId = null; // 삭제된 디자인 정리
+    document.body.classList.toggle("admin-unlocked", adminUnlocked);
+    $("#btnSaveDesign").hidden = !adminUnlocked;
+    $("#btnMyDesigns").hidden = !adminUnlocked;
+    $("#btnMyDesigns").classList.toggle("active", !adminOverlay.hidden);
+    const d = currentDesign();
+    $("#btnSaveDesign").title = d ? `'${d.name}'에 저장 (Ctrl+S)` : "내 디자인에 새로 저장 (Ctrl+S)";
+  }
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -2081,10 +2124,18 @@
       }
       thumb.addEventListener("click", () => openDesign(d));
 
+      if (d.id === currentDesignId) card.classList.add("current");
+
       const info = document.createElement("div");
       info.className = "design-info";
       info.innerHTML = `<div class="design-name"></div><div class="design-date"></div>`;
       info.querySelector(".design-name").textContent = d.name;
+      if (d.id === currentDesignId) {
+        const badge = document.createElement("span");
+        badge.className = "current-badge";
+        badge.textContent = "편집 중";
+        info.querySelector(".design-name").appendChild(badge);
+      }
       info.querySelector(".design-date").textContent = fmtDate(d.updatedAt);
 
       const actions = document.createElement("div");
@@ -2098,9 +2149,13 @@
         actions.appendChild(b);
       };
       mkBtn("edit", "열기 (편집)", () => openDesign(d));
-      mkBtn("sync", "현재 작업으로 덮어쓰기", () => overwriteDesign(d));
       mkBtn("content_copy", "복제", () => duplicateDesign(d));
       mkBtn("drive_file_rename_outline", "이름 바꾸기", () => renameDesign(d));
+      mkBtn("download", "HTML 다운로드", () => {
+        downloadBlob(new Blob([d.html], { type: "text/html;charset=utf-8" }),
+          d.name.replace(/[\\/:*?"<>|]/g, "_") + ".html");
+        toast(`'${d.name}'을(를) 저장했어요`, "download_done");
+      });
       mkBtn("delete", "삭제", () => deleteDesign(d), true);
 
       card.append(thumb, info, actions);
@@ -2109,46 +2164,58 @@
   }
 
   function openDesign(d) {
+    const cur = currentDesign();
     if (codeInput.value.trim() && codeInput.value !== d.html &&
+        !cur && // 디자인에 묶이지 않은 작업만 잃을 수 있으므로 그때만 확인
         !confirm(`'${d.name}' 디자인을 불러올까요?\n지금 작업 중인 내용은 사라져요. (자동 저장본은 유지)`)) return;
     setCode(d.html);
+    setCurrentDesign(d.id);
     closeAdmin();
     switchTab("preview");
-    toast(`'${d.name}' 디자인을 불러왔어요`, "edit");
+    toast(`'${d.name}' 편집을 시작해요. 헤더의 [저장]으로 바로 저장돼요`, "edit");
   }
 
   async function saveCurrentDesign() {
     if (!codeInput.value.trim()) {
       toast("저장할 내용이 없어요. 먼저 HTML을 만들어 주세요", "info", true);
-      return;
+      return null;
     }
     const name = prompt("디자인 이름을 입력하세요", `내 디자인 ${designs.length + 1}`);
-    if (name === null) return;
+    if (name === null) return null;
     toast("디자인을 저장하는 중…", "hourglass_top");
     const thumb = await captureThumb();
     const now = Date.now();
-    designs.unshift({
+    const d = {
       id: uid(),
       name: name.trim() || `내 디자인 ${designs.length + 1}`,
       html: codeInput.value,
       thumb,
       createdAt: now,
       updatedAt: now,
-    });
-    if (persistDesigns()) toast("디자인을 저장했어요", "check_circle");
+    };
+    designs.unshift(d);
+    if (persistDesigns()) toast(`'${d.name}'(으)로 저장했어요`, "check_circle");
     renderDesigns();
+    return d;
   }
 
-  async function overwriteDesign(d) {
+  /** 헤더 [저장]: 편집 중인 디자인에 바로 덮어쓰고, 없으면 새로 저장 */
+  async function saveToCurrent() {
     if (!codeInput.value.trim()) {
-      toast("덮어쓸 작업 내용이 없어요", "info", true);
+      toast("저장할 내용이 없어요. 먼저 HTML을 만들어 주세요", "info", true);
       return;
     }
-    if (!confirm(`'${d.name}'을(를) 지금 작업 중인 내용으로 바꿀까요?`)) return;
+    const d = currentDesign();
+    if (!d) {
+      const nd = await saveCurrentDesign();
+      if (nd) setCurrentDesign(nd.id);
+      renderDesigns();
+      return;
+    }
     d.html = codeInput.value;
     d.updatedAt = Date.now();
     d.thumb = await captureThumb() || d.thumb;
-    if (persistDesigns()) toast(`'${d.name}'을(를) 업데이트했어요`, "sync");
+    if (persistDesigns()) toast(`'${d.name}'에 저장했어요`, "check_circle");
     renderDesigns();
   }
 
@@ -2172,6 +2239,7 @@
   function deleteDesign(d) {
     if (!confirm(`'${d.name}' 디자인을 삭제할까요?\n삭제하면 되돌릴 수 없어요.`)) return;
     designs = designs.filter((x) => x !== d);
+    if (d.id === currentDesignId) setCurrentDesign(null);
     persistDesigns();
     renderDesigns();
     toast("디자인을 삭제했어요", "delete");
@@ -2179,13 +2247,31 @@
 
   function openAdmin() {
     gasUrlInput.value = localStorage.getItem(GAS_KEY) || "";
+    setAdminUnlocked(true);
     renderDesigns();
     adminOverlay.hidden = false;
+    updateAdminUI();
   }
-  function closeAdmin() { adminOverlay.hidden = true; }
+  function closeAdmin() {
+    adminOverlay.hidden = true;
+    updateAdminUI();
+  }
 
   $("#adminClose").addEventListener("click", closeAdmin);
-  $("#adminSaveCurrent").addEventListener("click", saveCurrentDesign);
+  $("#btnMyDesigns").addEventListener("click", () => {
+    adminOverlay.hidden ? openAdmin() : closeAdmin();
+  });
+  $("#btnSaveDesign").addEventListener("click", saveToCurrent);
+  $("#adminLock").addEventListener("click", () => {
+    setAdminUnlocked(false);
+    closeAdmin();
+    toast("관리자 버튼을 숨겼어요. 로고를 5번 클릭하면 다시 열려요", "lock");
+  });
+  $("#adminSaveCurrent").addEventListener("click", async () => {
+    const d = await saveCurrentDesign();
+    if (d) setCurrentDesign(d.id);
+    renderDesigns();
+  });
   $("#adminViewCard").addEventListener("click", () => {
     adminView = "card";
     localStorage.setItem("livehtml:adminView", adminView);
@@ -2281,6 +2367,7 @@
       toast("이전 작업을 불러왔어요", "history");
     }
   } catch (_) {}
+  updateAdminUI(); // 관리자 모드를 연 적이 있으면 헤더 버튼 복원
   if (!restored) {
     renderPreview();
     pushHistory("");
