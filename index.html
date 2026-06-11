@@ -313,8 +313,11 @@
     <header class="admin-head">
       <h2><span class="material-symbols-outlined">dashboard</span>내 디자인<span class="admin-badge">관리자</span></h2>
       <div class="admin-tools">
-        <button id="adminSaveCurrent" class="btn btn-primary btn-sm">
-          <span class="material-symbols-outlined">add</span><span class="btn-label">현재 작업 저장</span>
+        <button id="adminNew" class="btn btn-primary btn-sm">
+          <span class="material-symbols-outlined">add</span><span class="btn-label">새 디자인</span>
+        </button>
+        <button id="adminBackToEdit" class="btn btn-secondary btn-sm">
+          <span class="material-symbols-outlined">edit</span><span class="btn-label">편집으로</span>
         </button>
         <div class="mode-toggle">
           <button id="adminViewCard" class="mode-btn active" title="카드형 보기" aria-label="카드형 보기"><span class="material-symbols-outlined">grid_view</span></button>
@@ -322,6 +325,7 @@
         </div>
         <button id="adminCloudBtn" class="btn btn-tertiary btn-sm">
           <span class="material-symbols-outlined">cloud</span><span class="btn-label">클라우드</span>
+          <span class="cloud-dot" id="cloudDot" hidden></span>
         </button>
         <button id="adminLock" class="btn btn-icon" title="관리자 버튼 숨기기 (로고 5번 클릭으로 다시 열기)" aria-label="관리자 버튼 숨기기">
           <span class="material-symbols-outlined">lock</span>
@@ -329,24 +333,42 @@
         <button id="adminClose" class="btn btn-icon" title="편집으로 돌아가기" aria-label="편집으로 돌아가기"><span class="material-symbols-outlined">close</span></button>
       </div>
     </header>
+
     <div class="cloud-panel" id="cloudPanel" hidden>
-      <p class="cloud-desc">
-        Google Apps Script로 내 Google Drive에 디자인을 백업·복원할 수 있어요.
-        저장소의 <code>gas/Code.gs</code> 코드를 <strong>script.google.com</strong> 새 프로젝트에 붙여넣고
-        [배포 → 새 배포 → 웹 앱 → 액세스: 모든 사용자]로 배포한 뒤, 발급된 URL을 아래에 붙여넣으세요.
-        <strong>URL은 비밀번호처럼 비밀로 관리하세요.</strong>
-      </p>
-      <div class="cloud-row">
-        <input type="url" id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" />
-        <button id="gasBackup" class="btn btn-secondary btn-sm"><span class="material-symbols-outlined">cloud_upload</span>백업</button>
-        <button id="gasRestore" class="btn btn-tertiary btn-sm"><span class="material-symbols-outlined">cloud_download</span>복원</button>
+      <div class="cloud-status" id="cloudStatus">
+        <span class="material-symbols-outlined" id="cloudStatusIc">cloud_off</span>
+        <span id="cloudStatusText">클라우드가 연결되지 않았어요</span>
       </div>
+      <label class="cloud-field">
+        <span class="cloud-label">Apps Script 웹 앱 주소</span>
+        <input type="url" id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false" />
+        <span class="cloud-saved" id="cloudSaved" hidden><span class="material-symbols-outlined">check_circle</span>주소가 저장됐어요. 다시 입력하지 않아도 돼요.</span>
+      </label>
+      <label class="cloud-toggle">
+        <input type="checkbox" id="autoSyncChk" />
+        <span><strong>자동으로 클라우드에 저장</strong><small>디자인을 저장·수정할 때마다 자동으로 백업돼요 (권장)</small></span>
+      </label>
+      <div class="cloud-actions">
+        <button id="gasBackup" class="btn btn-secondary btn-sm"><span class="material-symbols-outlined">cloud_upload</span>지금 바로 백업</button>
+        <button id="gasRestore" class="btn btn-tertiary btn-sm"><span class="material-symbols-outlined">cloud_download</span>클라우드에서 불러오기</button>
+      </div>
+      <details class="cloud-help">
+        <summary>처음 연결하는 방법 (1번만 하면 돼요)</summary>
+        <ol>
+          <li><strong>script.google.com</strong>에서 새 프로젝트를 만들고, 저장소의 <code>gas/Code.gs</code> 내용을 붙여넣어요.</li>
+          <li>[배포] → [새 배포] → 유형 <strong>웹 앱</strong> → 액세스 <strong>모든 사용자</strong>로 배포해요.</li>
+          <li>발급된 <code>…/exec</code> 주소를 위 칸에 붙여넣으면 끝! (한 번만 하면 계속 기억해요)</li>
+          <li>코드를 고쳤다면 [배포 관리 → 수정 → 새 버전]으로 다시 배포해야 반영돼요.</li>
+        </ol>
+        <p class="cloud-warn">⚠️ 이 주소를 아는 사람은 백업을 읽고 쓸 수 있으니 비밀로 관리하세요.</p>
+      </details>
     </div>
+
     <div class="admin-body">
       <div class="design-list" id="designList"><!-- JS로 생성 --></div>
       <div class="admin-empty" id="adminEmpty">
         <span class="material-symbols-outlined">draft</span>
-        <p>저장된 디자인이 없어요.<br>[현재 작업 저장]을 눌러 첫 디자인을 만들어 보세요.</p>
+        <p>아직 저장한 디자인이 없어요.<br>위의 <strong>[새 디자인]</strong> 버튼으로 시작해 보세요.</p>
       </div>
     </div>
   </div>

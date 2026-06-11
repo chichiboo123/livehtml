@@ -5,6 +5,17 @@
 (() => {
   "use strict";
 
+  /* ============================================================
+   * 환경설정 — 여기에 값을 미리 넣어두면 매번 입력하지 않아도 돼요.
+   * 예) GAS_URL: "https://script.google.com/macros/s/AKfy…/exec"
+   *     AUTO_SYNC: true  → 디자인을 저장할 때마다 자동으로 클라우드 백업
+   * (비워 두면 앱 안에서 직접 입력한 값이 브라우저에 저장돼 계속 기억됩니다.)
+   * ============================================================ */
+  const CONFIG = {
+    GAS_URL: "",
+    AUTO_SYNC: false,
+  };
+
   const $ = (sel) => document.querySelector(sel);
 
   const codeInput = $("#codeInput");
@@ -1968,7 +1979,23 @@
 </body>
 </html>`;
 
+  const TPL_BLANK = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>새 디자인</title>
+<style>
+  body { margin: 0; background: #E9EDF2; font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; display: flex; justify-content: center; padding: 40px; }
+  .page { width: 1080px; height: 1080px; background: #ffffff; box-shadow: 0 4px 24px rgba(0,0,0,.08); position: relative; }
+</style>
+</head>
+<body>
+  <div class="page"><!-- 오른쪽 아래 + 버튼으로 글자·도형·이미지를 추가하세요 --></div>
+</body>
+</html>`;
+
   const TEMPLATES = [
+    { icon: "🟦", name: "빈 캔버스", size: "1080×1080", desc: "처음부터 자유롭게 만들기", html: TPL_BLANK },
     { icon: "✨", name: "사용법 예시", size: "600×600 · 3페이지", desc: "사용법이 적힌 연습용 카드뉴스", get html() { return SAMPLE_HTML; } },
     { icon: "📰", name: "카드뉴스", size: "1080×1080 · 3페이지", desc: "제목–내용–마무리 기본 구성", html: TPL_CARDNEWS },
     { icon: "📢", name: "행사 포스터", size: "794×1123 (A4)", desc: "일시·장소·대상이 들어간 안내 포스터", html: TPL_POSTER },
@@ -2018,9 +2045,23 @@
    * ============================================================ */
   const DESIGNS_KEY = "livehtml:designs";
   const GAS_KEY = "livehtml:gasUrl";
+  const AUTOSYNC_KEY = "livehtml:autoSync";
   const adminOverlay = $("#adminOverlay");
   const designListEl = $("#designList");
   const gasUrlInput = $("#gasUrl");
+
+  // 저장된 GAS 주소: 코드에 박아둔 값(CONFIG) → 브라우저 저장값 순으로 사용
+  function savedGasUrl() {
+    try { return (localStorage.getItem(GAS_KEY) || CONFIG.GAS_URL || "").trim(); }
+    catch (_) { return (CONFIG.GAS_URL || "").trim(); }
+  }
+  let autoSync = false;
+  try {
+    const raw = localStorage.getItem(AUTOSYNC_KEY);
+    autoSync = raw === null ? !!CONFIG.AUTO_SYNC : raw === "1";
+  } catch (_) { autoSync = !!CONFIG.AUTO_SYNC; }
+  let lastSyncAt = 0;
+  try { lastSyncAt = parseInt(localStorage.getItem("livehtml:lastSync"), 10) || 0; } catch (_) {}
 
   let designs = [];
   try { designs = JSON.parse(localStorage.getItem(DESIGNS_KEY)) || []; } catch (_) {}
@@ -2065,13 +2106,16 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   function persistDesigns() {
+    let ok = true;
     try {
       localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs));
-      return true;
     } catch (_) {
       toast("저장 공간이 가득 찼어요. 오래된 디자인을 지우거나 클라우드 백업을 사용하세요", "error", true);
-      return false;
+      ok = false;
     }
+    // 자동 백업이 켜져 있고 주소가 있으면 클라우드에도 반영
+    if (autoSync && savedGasUrl()) scheduleAutoSync();
+    return ok;
   }
 
   function fmtDate(ts) {
@@ -2107,13 +2151,28 @@
     $("#adminViewList").classList.toggle("active", adminView === "list");
     designListEl.innerHTML = "";
     $("#adminEmpty").hidden = designs.length > 0;
+
+    // 맨 앞: 새 디자인 만들기 카드 (런치패드)
+    const newCard = document.createElement("button");
+    newCard.type = "button";
+    newCard.className = "design-card new-card";
+    newCard.innerHTML = `<span class="new-ic"><span class="material-symbols-outlined">add</span></span>새 디자인 만들기`;
+    newCard.addEventListener("click", startNewDesign);
+    designListEl.appendChild(newCard);
+
     designs.forEach((d) => {
       const card = document.createElement("div");
       card.className = "design-card";
+      if (d.id === currentDesignId) card.classList.add("current");
+
+      // 썸네일+정보 = 클릭하면 열림 (관대한 클릭 영역)
+      const open = document.createElement("div");
+      open.className = "design-open";
+      open.title = "열어서 편집하기";
+      open.addEventListener("click", () => openDesign(d));
 
       const thumb = document.createElement("div");
       thumb.className = "design-thumb";
-      thumb.title = "열기";
       if (d.thumb) {
         const img = document.createElement("img");
         img.src = d.thumb;
@@ -2122,9 +2181,6 @@
       } else {
         thumb.innerHTML = `<span class="material-symbols-outlined">description</span>`;
       }
-      thumb.addEventListener("click", () => openDesign(d));
-
-      if (d.id === currentDesignId) card.classList.add("current");
 
       const info = document.createElement("div");
       info.className = "design-info";
@@ -2137,6 +2193,7 @@
         info.querySelector(".design-name").appendChild(badge);
       }
       info.querySelector(".design-date").textContent = fmtDate(d.updatedAt);
+      open.append(thumb, info);
 
       const actions = document.createElement("div");
       actions.className = "design-actions";
@@ -2158,9 +2215,16 @@
       });
       mkBtn("delete", "삭제", () => deleteDesign(d), true);
 
-      card.append(thumb, info, actions);
+      card.append(open, actions);
       designListEl.appendChild(card);
     });
+  }
+
+  /** 대시보드에서 바로 새 작업 시작 → 템플릿 고르기 (빈 캔버스 포함).
+   *  실제 연결 해제는 템플릿을 고르는 순간에 일어남 (취소하면 그대로 유지) */
+  function startNewDesign() {
+    closeAdmin();
+    openTemplates();
   }
 
   function openDesign(d) {
@@ -2246,9 +2310,11 @@
   }
 
   function openAdmin() {
-    gasUrlInput.value = localStorage.getItem(GAS_KEY) || "";
+    gasUrlInput.value = savedGasUrl();
+    $("#autoSyncChk").checked = autoSync;
     setAdminUnlocked(true);
     renderDesigns();
+    updateCloudStatus();
     adminOverlay.hidden = false;
     updateAdminUI();
   }
@@ -2258,6 +2324,7 @@
   }
 
   $("#adminClose").addEventListener("click", closeAdmin);
+  $("#adminBackToEdit").addEventListener("click", closeAdmin);
   $("#btnMyDesigns").addEventListener("click", () => {
     adminOverlay.hidden ? openAdmin() : closeAdmin();
   });
@@ -2267,11 +2334,7 @@
     closeAdmin();
     toast("관리자 버튼을 숨겼어요. 로고를 5번 클릭하면 다시 열려요", "lock");
   });
-  $("#adminSaveCurrent").addEventListener("click", async () => {
-    const d = await saveCurrentDesign();
-    if (d) setCurrentDesign(d.id);
-    renderDesigns();
-  });
+  $("#adminNew").addEventListener("click", startNewDesign);
   $("#adminViewCard").addEventListener("click", () => {
     adminView = "card";
     localStorage.setItem("livehtml:adminView", adminView);
@@ -2286,57 +2349,115 @@
     const p = $("#cloudPanel");
     p.hidden = !p.hidden;
   });
-  gasUrlInput.addEventListener("change", () => {
-    localStorage.setItem(GAS_KEY, gasUrlInput.value.trim());
+
+  /* ---- Google Apps Script 클라우드 ---- */
+  // 주소를 입력하는 즉시 브라우저에 저장 (다시 입력할 필요 없음)
+  gasUrlInput.addEventListener("input", () => {
+    const url = gasUrlInput.value.trim();
+    try { localStorage.setItem(GAS_KEY, url); } catch (_) {}
+    $("#cloudSaved").hidden = !url;
+    updateCloudStatus();
+  });
+  $("#autoSyncChk").addEventListener("change", (e) => {
+    autoSync = e.target.checked;
+    try { localStorage.setItem(AUTOSYNC_KEY, autoSync ? "1" : "0"); } catch (_) {}
+    updateCloudStatus();
+    if (autoSync && savedGasUrl()) {
+      toast("자동 저장을 켰어요. 지금 한 번 백업할게요", "cloud_sync");
+      doBackup(true);
+    }
   });
 
-  /* ---- Google Apps Script 백업/복원 ---- */
-  function gasUrl() {
-    const url = gasUrlInput.value.trim();
-    if (!url) {
-      toast("먼저 Apps Script 웹 앱 URL을 입력해 주세요", "info", true);
-      return null;
-    }
-    localStorage.setItem(GAS_KEY, url);
-    return url;
+  function setCloudStatus(kind, text) {
+    const box = $("#cloudStatus");
+    box.className = "cloud-status" + (kind ? " " + kind : "");
+    $("#cloudStatusIc").textContent =
+      kind === "ok" ? "cloud_done" : kind === "err" ? "cloud_alert" : kind === "sync" ? "cloud_sync" : "cloud_off";
+    $("#cloudStatusText").textContent = text;
   }
 
-  $("#gasBackup").addEventListener("click", async () => {
-    const url = gasUrl();
-    if (!url) return;
-    const btn = $("#gasBackup");
-    btn.disabled = true;
+  function relTime(ts) {
+    if (!ts) return "";
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return "방금 전";
+    if (s < 3600) return `${Math.floor(s / 60)}분 전`;
+    if (s < 86400) return `${Math.floor(s / 3600)}시간 전`;
+    return fmtDate(ts);
+  }
+
+  function updateCloudStatus() {
+    const has = !!savedGasUrl();
+    $("#cloudDot").hidden = !has;
+    $("#cloudSaved").hidden = !has;
+    if (!has) { setCloudStatus("", "클라우드가 연결되지 않았어요 (선택 사항)"); return; }
+    if (autoSync) {
+      setCloudStatus("ok", lastSyncAt
+        ? `자동 저장 켜짐 · 마지막 백업 ${relTime(lastSyncAt)}`
+        : "자동 저장 켜짐 · 아직 백업한 적 없어요");
+    } else {
+      setCloudStatus("ok", lastSyncAt
+        ? `연결됨 · 마지막 백업 ${relTime(lastSyncAt)}`
+        : "연결됨 · [지금 바로 백업]을 눌러 보세요");
+    }
+  }
+
+  async function doBackup(silent) {
+    const url = savedGasUrl();
+    if (!url) {
+      if (!silent) toast("먼저 Apps Script 주소를 입력해 주세요", "info", true);
+      return false;
+    }
+    if (!silent) setCloudStatus("sync", "백업하는 중…");
     try {
-      const res = await fetch(url, { method: "POST", body: JSON.stringify({ action: "backup", designs }) });
+      // Apps Script는 단순 요청(text/plain)이라야 CORS 사전요청 없이 통과
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "backup", designs }),
+      });
       const j = await res.json();
       if (!j.ok) throw new Error(j.error || "backup failed");
-      toast(`클라우드에 디자인 ${designs.length}개를 백업했어요`, "cloud_done");
+      lastSyncAt = Date.now();
+      try { localStorage.setItem("livehtml:lastSync", String(lastSyncAt)); } catch (_) {}
+      updateCloudStatus();
+      if (!silent) toast(`클라우드에 디자인 ${designs.length}개를 백업했어요`, "cloud_done");
+      return true;
     } catch (err) {
       console.error(err);
-      toast("백업에 실패했어요. URL과 배포 설정(모든 사용자)을 확인하세요", "error", true);
-    } finally {
-      btn.disabled = false;
+      setCloudStatus("err", "백업 실패 — 주소·배포 설정을 확인하세요");
+      if (!silent) toast("백업에 실패했어요. 주소와 배포(액세스: 모든 사용자)를 확인하세요", "error", true);
+      return false;
     }
-  });
+  }
+
+  const scheduleAutoSync = debounce(() => doBackup(true), 2500);
+
+  $("#gasBackup").addEventListener("click", () => doBackup(false));
 
   $("#gasRestore").addEventListener("click", async () => {
-    const url = gasUrl();
-    if (!url) return;
+    const url = savedGasUrl();
+    if (!url) { toast("먼저 Apps Script 주소를 입력해 주세요", "info", true); return; }
     const btn = $("#gasRestore");
     btn.disabled = true;
+    setCloudStatus("sync", "클라우드에서 불러오는 중…");
     try {
       const res = await fetch(url + (url.includes("?") ? "&" : "?") + "action=restore");
       const arr = await res.json();
       if (!Array.isArray(arr)) throw new Error("invalid data");
       if (designs.length &&
-          !confirm(`이 기기의 디자인 ${designs.length}개를 클라우드의 ${arr.length}개로 바꿀까요?`)) return;
+          !confirm(`클라우드에 디자인 ${arr.length}개가 있어요.\n이 기기의 ${designs.length}개를 클라우드 내용으로 바꿀까요?\n(이 기기에만 있는 디자인은 사라져요)`)) {
+        updateCloudStatus();
+        return;
+      }
       designs = arr;
-      persistDesigns();
+      try { localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs)); } catch (_) {}
       renderDesigns();
+      updateCloudStatus();
       toast(`클라우드에서 디자인 ${arr.length}개를 가져왔어요`, "cloud_download");
     } catch (err) {
       console.error(err);
-      toast("복원에 실패했어요. URL과 배포 설정을 확인하세요", "error", true);
+      setCloudStatus("err", "불러오기 실패 — 주소·배포 설정을 확인하세요");
+      toast("불러오기에 실패했어요. 주소와 배포 설정을 확인하세요", "error", true);
     } finally {
       btn.disabled = false;
     }

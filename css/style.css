@@ -1001,25 +1001,81 @@ body.mode-view .insert-fab { display: none; }
 
 .cloud-panel {
   flex: none;
-  padding: 12px 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 14px 16px;
   background: var(--c-primary-soft);
   border-bottom: 1px solid var(--c-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .cloud-panel[hidden] { display: none; }
-.cloud-desc { margin: 0 0 10px; font-size: 13px; line-height: 1.65; color: var(--c-text); }
-.cloud-desc code { background: #fff; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
-.cloud-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.cloud-row input {
-  flex: 1;
-  min-width: 200px;
-  height: 36px;
+.cloud-panel code { background: #fff; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+/* 연결 상태 배너 */
+.cloud-status {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 700;
+  background: #fff;
+  color: var(--c-text-sub);
+}
+.cloud-status .material-symbols-outlined { font-size: 20px; }
+.cloud-status.ok { color: #1F8A4C; }
+.cloud-status.ok .material-symbols-outlined { color: #1F8A4C; }
+.cloud-status.err { color: var(--c-danger); }
+.cloud-status.err .material-symbols-outlined { color: var(--c-danger); }
+
+/* 헤더 클라우드 버튼의 연결 점 */
+#adminCloudBtn { position: relative; }
+.cloud-dot {
+  position: absolute; top: 4px; right: 4px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #1F8A4C;
+}
+.cloud-dot[hidden] { display: none; }
+
+.cloud-field { display: flex; flex-direction: column; gap: 5px; }
+.cloud-label { font-size: 12px; font-weight: 800; color: var(--c-text-sub); }
+.cloud-field input {
+  height: 38px;
   padding: 0 12px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   font-family: inherit;
   font-size: 13px;
+  background: #fff;
 }
-.cloud-row input:focus { outline: 2px solid rgba(36,107,235,.4); border-color: var(--c-primary); }
+.cloud-field input:focus { outline: 2px solid rgba(36,107,235,.4); border-color: var(--c-primary); }
+.cloud-saved {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 700; color: #1F8A4C;
+}
+.cloud-saved[hidden] { display: none; }
+.cloud-saved .material-symbols-outlined { font-size: 16px; }
+
+.cloud-toggle {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--c-border-light);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.cloud-toggle input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--c-primary); flex: none; cursor: pointer; }
+.cloud-toggle strong { display: block; font-size: 14px; }
+.cloud-toggle small { font-size: 12px; color: var(--c-text-sub); }
+
+.cloud-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cloud-actions .btn { flex: 1; min-width: 150px; }
+
+.cloud-help { font-size: 13px; color: var(--c-text); }
+.cloud-help summary { cursor: pointer; font-weight: 700; color: var(--c-primary); padding: 4px 0; }
+.cloud-help ol { margin: 8px 0; padding-left: 20px; line-height: 1.7; }
+.cloud-help li { margin-bottom: 4px; }
+.cloud-warn { margin: 6px 0 0; font-size: 12px; color: var(--c-danger); font-weight: 700; }
 
 .admin-body { flex: 1; overflow-y: auto; padding: 16px; }
 .design-list {
@@ -1037,6 +1093,38 @@ body.mode-view .insert-fab { display: none; }
   transition: box-shadow .15s, border-color .15s;
 }
 .design-card:hover { border-color: var(--c-primary); box-shadow: var(--shadow); }
+
+/* 새 디자인 만들기 카드 (런치패드) */
+.new-card {
+  border: 2px dashed var(--c-border);
+  background: var(--c-surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 160px;
+  color: var(--c-primary);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  transition: border-color .15s, background-color .15s;
+}
+.new-card:hover { border-color: var(--c-primary); background: var(--c-primary-soft); }
+.new-card .new-ic {
+  width: 48px; height: 48px;
+  display: grid; place-items: center;
+  background: var(--c-primary-soft);
+  border-radius: 50%;
+}
+.new-card .new-ic .material-symbols-outlined { font-size: 30px; }
+.design-list.list-view .new-card { flex-direction: row; min-height: 60px; justify-content: flex-start; padding: 0 16px; gap: 12px; }
+.design-list.list-view .new-card .new-ic { width: 38px; height: 38px; }
+.design-list.list-view .new-card .new-ic .material-symbols-outlined { font-size: 24px; }
+
+/* 카드 본문(썸네일+정보)을 클릭하면 열림 */
+.design-open { cursor: pointer; display: contents; }
 .design-thumb {
   aspect-ratio: 4 / 3;
   background: var(--c-canvas);
