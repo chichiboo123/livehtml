@@ -1791,6 +1791,7 @@
       else if (!fillPanel.hidden) closeFillPanel();
       else if (!insertPanel.hidden) closeInsertPanel();
       else if (!downloadModal.hidden) closeDownloadModal();
+      else if (!mcModal.hidden) closeMagic();
       else if (!templateModal.hidden) closeTemplates();
       else if (!helpModal.hidden) closeHelp();
       else if (!$("#adminOverlay").hidden) $("#adminClose").click();
@@ -1862,181 +1863,233 @@
 </html>`;
 
   /* ============================================================
-   * 템플릿
+   * 템플릿 갤러리 — 테마 × (카드뉴스/포스터/PPT) 세트
+   * 테마·빌더 데이터는 js/templates.js 에서 제공
    * ============================================================ */
-  const TPL_CARDNEWS = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>카드뉴스</title>
-<style>
-  body { margin: 0; padding: 40px; background: #E9EDF2; font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; display: flex; flex-direction: column; align-items: center; gap: 40px; }
-  .page { width: 1080px; height: 1080px; background: #ffffff; box-sizing: border-box; padding: 96px; display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden; }
-  .bar { width: 88px; height: 14px; background: #246BEB; border-radius: 7px; margin-bottom: 36px; }
-  .cat { font-size: 26px; font-weight: 800; color: #246BEB; letter-spacing: .25em; margin: 0 0 18px; }
-  h1 { font-size: 88px; font-weight: 800; line-height: 1.25; letter-spacing: -0.02em; color: #1E2124; margin: 0 0 28px; }
-  .desc { font-size: 34px; color: #6D7882; line-height: 1.6; margin: 0; }
-  .foot { position: absolute; left: 96px; bottom: 72px; font-size: 26px; font-weight: 700; color: #9DA5AE; }
-  .item { padding: 44px 0; border-bottom: 2px solid #E6E8EA; }
-  .item:first-of-type { border-top: 2px solid #E6E8EA; }
-  .num { font-size: 30px; font-weight: 800; color: #246BEB; margin: 0 0 10px; }
-  h2 { font-size: 54px; font-weight: 800; color: #1E2124; margin: 0 0 16px; }
-  .item p.body { font-size: 30px; color: #6D7882; line-height: 1.6; margin: 0; }
-  .last { align-items: center; text-align: center; background: #246BEB; }
-  .last h1 { color: #ffffff; font-size: 76px; }
-  .last .desc { color: rgba(255,255,255,.88); }
-</style>
-</head>
-<body>
-  <div class="page">
-    <div class="bar"></div>
-    <p class="cat">CARD NEWS</p>
-    <h1>여기에 제목을<br>입력하세요</h1>
-    <p class="desc">부제목이나 간단한 설명을 적어 주세요.<br>글자를 두 번 누르면 바로 고칠 수 있어요.</p>
-    <div class="foot">@내이름</div>
-  </div>
-
-  <div class="page">
-    <div class="item"><p class="num">01</p><h2>첫 번째 내용</h2><p class="body">설명을 입력하세요.</p></div>
-    <div class="item"><p class="num">02</p><h2>두 번째 내용</h2><p class="body">설명을 입력하세요.</p></div>
-    <div class="item"><p class="num">03</p><h2>세 번째 내용</h2><p class="body">설명을 입력하세요.</p></div>
-  </div>
-
-  <div class="page last">
-    <h1>마무리 문구를<br>적어 보세요 🙌</h1>
-    <p class="desc">좋아요 · 공유 · 저장을 부탁하는 문구도 좋아요.</p>
-  </div>
-</body>
-</html>`;
-
-  const TPL_POSTER = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>포스터</title>
-<style>
-  body { margin: 0; padding: 40px; background: #E9EDF2; font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; display: flex; justify-content: center; }
-  .page { width: 794px; height: 1123px; box-sizing: border-box; padding: 72px; background: linear-gradient(165deg, #18408C 0%, #246BEB 55%, #5E8BFF 100%); color: #ffffff; display: flex; flex-direction: column; position: relative; overflow: hidden; }
-  .deco { position: absolute; border-radius: 50%; background: rgba(255,255,255,.1); }
-  .badge { align-self: flex-start; background: rgba(255,255,255,.22); padding: 10px 26px; border-radius: 999px; font-size: 22px; font-weight: 700; }
-  h1 { font-size: 84px; font-weight: 800; line-height: 1.25; letter-spacing: -0.02em; margin: 36px 0 16px; }
-  .sub { font-size: 28px; line-height: 1.6; opacity: .92; margin: 0; }
-  .info { margin-top: auto; background: rgba(255,255,255,.14); border-radius: 20px; padding: 32px 36px; }
-  .row { display: flex; gap: 18px; font-size: 26px; line-height: 1.5; margin: 10px 0; }
-  .row strong { flex: none; width: 96px; font-weight: 800; }
-  .host { margin-top: 28px; text-align: center; font-size: 22px; font-weight: 700; opacity: .85; }
-</style>
-</head>
-<body>
-  <div class="page">
-    <div class="deco" style="width:360px;height:360px;top:-120px;right:-120px;"></div>
-    <div class="deco" style="width:220px;height:220px;bottom:200px;left:-90px;"></div>
-    <span class="badge">행사 안내</span>
-    <h1>행사 제목을<br>입력하세요</h1>
-    <p class="sub">행사를 소개하는 한두 줄 설명을 적어 주세요.</p>
-    <div class="info">
-      <div class="row"><strong>일시</strong><span>0000년 00월 00일 (요일) 00:00</span></div>
-      <div class="row"><strong>장소</strong><span>장소를 입력하세요</span></div>
-      <div class="row"><strong>대상</strong><span>누구나 참여할 수 있어요</span></div>
-    </div>
-    <p class="host">주최 · 주관 | 단체 이름</p>
-  </div>
-</body>
-</html>`;
-
-  const TPL_SLIDES = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>프레젠테이션</title>
-<style>
-  body { margin: 0; padding: 40px; background: #E9EDF2; font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; display: flex; flex-direction: column; align-items: center; gap: 40px; }
-  .page { width: 1280px; height: 720px; box-sizing: border-box; background: #ffffff; display: flex; flex-direction: column; justify-content: center; padding: 90px; position: relative; overflow: hidden; }
-  .title-slide { background: linear-gradient(135deg, #18408C 0%, #246BEB 60%, #5E8BFF 100%); color: #ffffff; align-items: center; text-align: center; }
-  .title-slide h1 { font-size: 72px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 20px; }
-  .title-slide p { font-size: 28px; opacity: .9; margin: 0; }
-  .bar { width: 72px; height: 12px; background: #246BEB; border-radius: 6px; margin-bottom: 28px; }
-  h2 { font-size: 52px; font-weight: 800; color: #1E2124; margin: 0 0 36px; letter-spacing: -0.02em; }
-  .bullet { display: flex; align-items: flex-start; gap: 18px; margin-bottom: 26px; }
-  .dot { flex: none; width: 16px; height: 16px; border-radius: 50%; background: #246BEB; margin-top: 14px; }
-  .bullet p { font-size: 30px; color: #3C4148; line-height: 1.55; margin: 0; }
-  .pagenum { position: absolute; right: 48px; bottom: 32px; font-size: 20px; font-weight: 700; color: #9DA5AE; }
-</style>
-</head>
-<body>
-  <div class="page title-slide">
-    <h1>발표 제목을 입력하세요</h1>
-    <p>발표자 이름 · 날짜</p>
-  </div>
-
-  <div class="page">
-    <div class="bar"></div>
-    <h2>핵심 내용</h2>
-    <div class="bullet"><span class="dot"></span><p>첫 번째 핵심 내용을 입력하세요.</p></div>
-    <div class="bullet"><span class="dot"></span><p>두 번째 핵심 내용을 입력하세요.</p></div>
-    <div class="bullet"><span class="dot"></span><p>세 번째 핵심 내용을 입력하세요.</p></div>
-    <span class="pagenum">2</span>
-  </div>
-</body>
-</html>`;
-
-  const TPL_BLANK = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>새 디자인</title>
-<style>
-  body { margin: 0; background: #E9EDF2; font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; display: flex; justify-content: center; padding: 40px; }
-  .page { width: 1080px; height: 1080px; background: #ffffff; box-shadow: 0 4px 24px rgba(0,0,0,.08); position: relative; }
-</style>
-</head>
-<body>
-  <div class="page"><!-- 오른쪽 아래 + 버튼으로 글자·도형·이미지를 추가하세요 --></div>
-</body>
-</html>`;
-
-  const TEMPLATES = [
-    { icon: "🟦", name: "빈 캔버스", size: "1080×1080", desc: "처음부터 자유롭게 만들기", html: TPL_BLANK },
-    { icon: "✨", name: "사용법 예시", size: "600×600 · 3페이지", desc: "사용법이 적힌 연습용 카드뉴스", get html() { return SAMPLE_HTML; } },
-    { icon: "📰", name: "카드뉴스", size: "1080×1080 · 3페이지", desc: "제목–내용–마무리 기본 구성", html: TPL_CARDNEWS },
-    { icon: "📢", name: "행사 포스터", size: "794×1123 (A4)", desc: "일시·장소·대상이 들어간 안내 포스터", html: TPL_POSTER },
-    { icon: "📊", name: "프레젠테이션", size: "1280×720 · 2장", desc: "제목 슬라이드 + 내용 슬라이드", html: TPL_SLIDES },
-  ];
-
+  const TplLib = window.LiveHTMLTemplates;
   const templateModal = $("#templateModal");
+  let tplFormat = "cardnews";
+  let tplQuery = "";
   let tplBuilt = false;
+
+  function tplInsert(html, label) {
+    if (codeInput.value.trim() && !confirm("지금 작업 중인 내용을 이 템플릿으로 바꿀까요?")) return;
+    setCode(html);
+    setCurrentDesign(null);
+    closeTemplates();
+    switchTab("preview");
+    toast(`'${label}' 템플릿을 불러왔어요. 화면을 눌러서 고쳐보세요!`, "space_dashboard");
+  }
+
+  function renderTplFormats() {
+    const wrap = $("#tplFormats");
+    wrap.innerHTML = "";
+    Object.values(TplLib.FORMATS).forEach((f) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tpl-chip" + (f.id === tplFormat ? " active" : "");
+      b.innerHTML = `<span class="material-symbols-outlined">${f.icon}</span>${f.name} <small>${f.w}×${f.h}</small>`;
+      b.addEventListener("click", () => {
+        tplFormat = f.id;
+        renderTplFormats();
+        renderTplBasic();
+        renderTplGrid();
+      });
+      wrap.appendChild(b);
+    });
+  }
+
+  function renderTplBasic() {
+    const fmt = TplLib.FORMATS[tplFormat];
+    const wrap = $("#tplBasic");
+    wrap.innerHTML = "";
+    const mk = (icon, name, sub, fn) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tpl-basic-card";
+      b.innerHTML = `<span class="material-symbols-outlined">${icon}</span><strong></strong><small></small>`;
+      b.querySelector("strong").textContent = name;
+      b.querySelector("small").textContent = sub;
+      b.addEventListener("click", fn);
+      wrap.appendChild(b);
+    };
+    mk("crop_free", "빈 캔버스", `${fmt.name} · ${fmt.w}×${fmt.h}`,
+      () => tplInsert(TplLib.buildBlank(tplFormat), "빈 캔버스"));
+    mk("school", "사용법 예시", "기능을 익히는 연습용 카드뉴스",
+      () => tplInsert(SAMPLE_HTML, "사용법 예시"));
+  }
+
+  function renderTplGrid() {
+    const grid = $("#tplGrid");
+    grid.innerHTML = "";
+    const q = tplQuery.trim().toLowerCase();
+    const fmt = TplLib.FORMATS[tplFormat];
+    let count = 0;
+    TplLib.THEMES.forEach((t) => {
+      const hay = (t.name + " " + t.desc + " " + t.tags.join(" ")).toLowerCase();
+      if (q && !hay.includes(q)) return;
+      count++;
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "theme-card";
+      card.title = `'${t.name}' 테마로 ${fmt.name} 시작`;
+
+      const prev = document.createElement("span");
+      prev.className = "theme-prev";
+      prev.style.background = t.page;
+      prev.style.aspectRatio = `${fmt.w} / ${fmt.h}`;
+      prev.innerHTML =
+        `<span class="tp-badge"></span>` +
+        `<span class="tp-title"></span>` +
+        `<span class="tp-bar"></span>`;
+      const badge = prev.querySelector(".tp-badge");
+      badge.textContent = t.sample.badge;
+      badge.style.background = t.primary;
+      badge.style.color = t.badgeInk || "#fff";
+      const title = prev.querySelector(".tp-title");
+      title.textContent = t.sample.title.replace(/<br\s*\/?>/gi, " ");
+      title.style.color = t.ink;
+      prev.querySelector(".tp-bar").style.background = t.primary;
+
+      const meta = document.createElement("span");
+      meta.className = "theme-meta";
+      meta.innerHTML = `<strong></strong><small></small><span class="theme-tags"></span>`;
+      meta.querySelector("strong").textContent = `${t.emoji} ${t.name}`;
+      meta.querySelector("small").textContent = t.desc;
+      meta.querySelector(".theme-tags").textContent = t.tags.map((x) => "#" + x).join(" ");
+
+      card.append(prev, meta);
+      card.addEventListener("click", () =>
+        tplInsert(TplLib.buildTemplate(t.id, tplFormat), `${t.name} ${fmt.name}`));
+      grid.appendChild(card);
+    });
+    $("#tplEmpty").hidden = count > 0;
+  }
 
   function openTemplates() {
     if (!tplBuilt) {
       tplBuilt = true;
-      const grid = $("#tplGrid");
-      TEMPLATES.forEach((t) => {
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "tpl-card";
-        card.innerHTML = `<span class="tpl-ic"></span><strong></strong><small></small><span class="tpl-size"></span>`;
-        card.querySelector(".tpl-ic").textContent = t.icon;
-        card.querySelector("strong").textContent = t.name;
-        card.querySelector("small").textContent = t.desc;
-        card.querySelector(".tpl-size").textContent = t.size;
-        card.addEventListener("click", () => {
-          if (codeInput.value.trim() && !confirm("지금 작업 중인 내용을 이 템플릿으로 바꿀까요?")) return;
-          setCode(t.html);
-          setCurrentDesign(null);
-          closeTemplates();
-          switchTab("preview");
-          toast(`'${t.name}' 템플릿을 불러왔어요. 화면을 눌러서 고쳐보세요!`, "space_dashboard");
-        });
-        grid.appendChild(card);
+      $("#tplSearch").addEventListener("input", (e) => {
+        tplQuery = e.target.value;
+        renderTplGrid();
       });
     }
+    renderTplFormats();
+    renderTplBasic();
+    renderTplGrid();
     templateModal.hidden = false;
+    if (window.matchMedia("(hover: hover)").matches) $("#tplSearch").focus();
   }
   function closeTemplates() { templateModal.hidden = true; }
 
   $("#tplClose").addEventListener("click", closeTemplates);
   templateModal.addEventListener("click", (e) => {
     if (e.target === templateModal) closeTemplates();
+  });
+
+  /* ============================================================
+   * 매직 체인지 — 페이지 크기 변환 (카드뉴스 ↔ 포스터 ↔ PPT …)
+   * 내용 전체를 래퍼에 담아 비율에 맞게 scale하고 가운데 배치.
+   * 원본 크기는 data-lh-mc-w/h에 보존되어 몇 번이고 다시 변환 가능.
+   * ============================================================ */
+  const MC_FORMATS = [
+    { id: "cardnews", name: "카드뉴스 정사각", w: 1080, h: 1080, icon: "crop_square", sub: "인스타그램 피드" },
+    { id: "story", name: "세로형 · 스토리", w: 1080, h: 1920, icon: "crop_portrait", sub: "릴스 · 스토리 · 세로 포스터" },
+    { id: "poster", name: "포스터 A4", w: 794, h: 1123, icon: "description", sub: "인쇄용 세로 A4" },
+    { id: "slides", name: "PPT 슬라이드", w: 1280, h: 720, icon: "slideshow", sub: "16:9 발표 화면" },
+  ];
+
+  const mcModal = $("#mcModal");
+
+  function mcPages() {
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return [];
+    return (pages.length ? pages : detectPages()).filter((p) => p !== doc.body);
+  }
+
+  function openMagic() {
+    if (!requireContent()) return;
+    clearSelection();
+    const pgs = mcPages();
+    if (!pgs.length) {
+      toast("페이지 구조를 찾지 못했어요. .page나 section으로 감싸 주세요", "error", true);
+      return;
+    }
+    const r = pgs[0].getBoundingClientRect();
+    const cw = Math.round(r.width), ch = Math.round(r.height);
+    $("#mcCurrent").textContent = `${cw} × ${ch}px · ${pgs.length}페이지`;
+
+    const wrap = $("#mcOptions");
+    wrap.innerHTML = "";
+    MC_FORMATS.forEach((f) => {
+      const isNow = Math.abs(f.w - cw) < 4 && Math.abs(f.h - ch) < 4;
+      const b = document.createElement("button");
+      b.className = "dl-option";
+      b.innerHTML = `
+        <span class="dl-ic"><span class="material-symbols-outlined">${f.icon}</span></span>
+        <span class="dl-text"><strong></strong><small></small></span>
+        ${isNow ? '<span class="mc-now">현재 크기</span>' : '<span class="material-symbols-outlined arrow">chevron_right</span>'}`;
+      b.querySelector("strong").textContent = `${f.name} (${f.w}×${f.h})`;
+      b.querySelector("small").textContent = f.sub;
+      b.disabled = isNow;
+      b.addEventListener("click", () => {
+        magicChange(f);
+        closeMagic();
+      });
+      wrap.appendChild(b);
+    });
+    mcModal.hidden = false;
+  }
+  function closeMagic() { mcModal.hidden = true; }
+
+  function magicChange(target) {
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+    const pgs = mcPages();
+    if (!pgs.length) return;
+    pgs.forEach((el) => {
+      const cs = win.getComputedStyle(el);
+      let inner = [...el.children].find((c) => c.hasAttribute && c.hasAttribute("data-lh-mc"));
+      if (!inner) {
+        // 처음 변환: 페이지 내용을 래퍼로 감싸고 원본 레이아웃을 그대로 보존
+        const cw = el.clientWidth;
+        const ch = el.clientHeight;
+        inner = doc.createElement("div");
+        inner.setAttribute("data-lh-mc", "");
+        inner.setAttribute("data-lh-mc-w", String(cw));
+        inner.setAttribute("data-lh-mc-h", String(ch));
+        inner.style.cssText =
+          `box-sizing:border-box;width:${cw}px;height:${ch}px;position:absolute;transform-origin:top left;` +
+          `padding:${cs.padding};display:${cs.display};flex-direction:${cs.flexDirection};` +
+          `justify-content:${cs.justifyContent};align-items:${cs.alignItems};gap:${cs.gap};` +
+          `text-align:${cs.textAlign};`;
+        while (el.firstChild) inner.appendChild(el.firstChild);
+        el.appendChild(inner);
+        el.style.padding = "0";
+      }
+      const ow = parseFloat(inner.getAttribute("data-lh-mc-w")) || 1;
+      const oh = parseFloat(inner.getAttribute("data-lh-mc-h")) || 1;
+      const s = Math.min(target.w / ow, target.h / oh);
+      inner.style.transform = `scale(${s})`;
+      inner.style.left = Math.round((target.w - ow * s) / 2) + "px";
+      inner.style.top = Math.round((target.h - oh * s) / 2) + "px";
+      el.style.width = target.w + "px";
+      el.style.height = target.h + "px";
+      el.style.boxSizing = "border-box";
+      el.style.maxWidth = "none";
+      el.style.minHeight = "0";
+      el.style.overflow = "hidden";
+      if (cs.position === "static") el.style.position = "relative";
+    });
+    syncFromPreview();
+    applyZoom();
+    toast(`${target.name} 크기로 변환했어요. Ctrl+Z로 되돌릴 수 있어요`, "magic_exchange");
+  }
+
+  $("#btnMagic").addEventListener("click", openMagic);
+  $("#mcClose").addEventListener("click", closeMagic);
+  mcModal.addEventListener("click", (e) => {
+    if (e.target === mcModal) closeMagic();
   });
 
   /* ============================================================

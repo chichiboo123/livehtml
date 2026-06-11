@@ -916,36 +916,151 @@ body.mode-view .insert-fab { display: none; }
 .png-size-label .material-symbols-outlined { font-size: 18px; }
 .png-size-row select { flex: 1; max-width: 220px; }
 
-/* ---- 템플릿 ---- */
-.tpl-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+/* ---- 템플릿 갤러리 ---- */
+.tpl-modal { width: min(780px, 100%); max-height: min(86vh, 820px); }
+.tpl-controls {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
+  padding: 4px 20px 12px;
+  border-bottom: 1px solid var(--c-border-light);
 }
-.tpl-card {
+.tpl-search {
+  flex: 1 1 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  color: var(--c-text-sub);
+  background: var(--c-surface);
+}
+.tpl-search:focus-within { border-color: var(--c-primary); outline: 2px solid rgba(36,107,235,.25); }
+.tpl-search input { flex: 1; border: none; font-family: inherit; font-size: 14px; color: var(--c-text); min-width: 0; }
+.tpl-search input:focus { outline: none; }
+.tpl-formats { display: flex; gap: 6px; flex-wrap: wrap; }
+.tpl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-surface);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tpl-chip small { font-size: 11px; font-weight: 600; color: var(--c-text-sub); }
+.tpl-chip .material-symbols-outlined { font-size: 18px; }
+.tpl-chip.active { background: var(--c-primary); border-color: var(--c-primary); color: #fff; }
+.tpl-chip.active small { color: rgba(255,255,255,.8); }
+
+.tpl-basic { display: flex; gap: 10px; margin-bottom: 16px; }
+.tpl-basic-card {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 14px;
-  border: 1px solid var(--c-border-light);
+  align-items: center;
+  gap: 3px;
+  padding: 14px 10px;
+  border: 2px dashed var(--c-border);
   border-radius: 12px;
+  background: var(--c-surface);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color .15s, background-color .15s;
+}
+.tpl-basic-card:hover { border-color: var(--c-primary); background: var(--c-primary-soft); }
+.tpl-basic-card .material-symbols-outlined { font-size: 26px; color: var(--c-primary); }
+.tpl-basic-card strong { font-size: 14px; }
+.tpl-basic-card small { font-size: 12px; color: var(--c-text-sub); }
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid var(--c-border-light);
+  border-radius: 14px;
   background: var(--c-surface);
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color .15s, background-color .15s, transform .08s;
+  overflow: hidden;
+  transition: border-color .15s, box-shadow .15s, transform .08s;
 }
-.tpl-card:hover { border-color: var(--c-primary); background: var(--c-primary-soft); }
-.tpl-card:active { transform: scale(.98); }
-.tpl-ic { font-size: 30px; line-height: 1.2; }
-.tpl-card strong { font-size: 14px; color: var(--c-text); }
-.tpl-card small { font-size: 12px; color: var(--c-text-sub); line-height: 1.45; }
-.tpl-size {
-  font-size: 11px; font-weight: 700;
+.theme-card:hover { border-color: var(--c-primary); box-shadow: var(--shadow); transform: translateY(-2px); }
+.theme-card:active { transform: scale(.98); }
+.theme-prev {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  overflow: hidden;
+  max-height: 190px;
+}
+.tp-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.tp-title {
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.tp-bar { width: 34px; height: 4px; border-radius: 2px; }
+.theme-meta { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 12px; }
+.theme-meta strong { font-size: 14px; color: var(--c-text); }
+.theme-meta small { font-size: 12px; color: var(--c-text-sub); line-height: 1.45; }
+.theme-tags { font-size: 11px; color: var(--c-primary); font-weight: 600; margin-top: 2px; }
+.tpl-empty { text-align: center; padding: 36px 12px; font-size: 14px; color: var(--c-text-sub); }
+.tpl-empty[hidden] { display: none; }
+
+/* ---- 매직 체인지 ---- */
+.mc-desc { margin: 0 0 12px; font-size: 14px; line-height: 1.65; color: var(--c-text-sub); }
+.mc-current {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: var(--c-bg);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--c-text-sub);
+}
+.mc-current b { color: var(--c-text); }
+#mcOptions .dl-option + .dl-option { margin-top: 8px; }
+.mc-now {
+  font-size: 11px; font-weight: 800;
   color: var(--c-primary);
   background: var(--c-primary-soft);
   padding: 2px 8px; border-radius: 99px;
+}
+
+@media (max-width: 600px) {
+  #btnMagic .btn-label { display: none; }
+  .theme-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .tpl-basic { flex-direction: row; }
 }
 
 /* ---- 도움말 ---- */
