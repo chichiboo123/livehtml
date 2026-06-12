@@ -51,7 +51,8 @@
   const SNAP_DIST = 6; // 가운데 정렬 스냅 허용 거리(px)
 
   let editMode = true;          // 편집 모드 / 보기 모드
-  let selectedEl = null;        // iframe 안에서 선택된 요소
+  let selectedEl = null;        // iframe 안에서 선택된 요소 (다중 선택 시 대표 요소)
+  let extraSel = [];            // 다중 선택된 나머지 요소들
   let editingEl = null;         // 텍스트 편집 중인 요소
   let zoomMode = "fit";
   let currentScale = 1;
@@ -260,12 +261,11 @@
 
   function applyFont(font) {
     if (!selectedEl || guardLocked()) return;
-    if (!font.family) {
-      selectedEl.style.removeProperty("font-family");
-    } else {
-      ensureFontLink(iframe.contentDocument, font);
-      selectedEl.style.fontFamily = `'${font.family}', ${font.fallback}`;
-    }
+    if (font.family) ensureFontLink(iframe.contentDocument, font);
+    selEls().forEach((el) => {
+      if (!font.family) el.style.removeProperty("font-family");
+      else el.style.fontFamily = `'${font.family}', ${font.fallback}`;
+    });
     closeFontPanel();
     updateFontChip();
     syncFromPreview();
@@ -308,6 +308,11 @@
         !(e.target.closest && e.target.closest("[data-act='style']"))) {
       closeStylePanel();
     }
+    // 작업창(미리보기) 바깥 — 코드창·헤더 등을 누르면 요소 선택 해제
+    // (iframe 내부 클릭은 부모 document 로 전달되지 않으므로 캔버스 클릭은 영향 없음)
+    if (editMode && selectedEl && e.target.closest && !e.target.closest(".preview-pane")) {
+      clearSelection();
+    }
   });
 
   /* ============================================================
@@ -331,6 +336,10 @@
   }
 
   function applyHistory(dir) {
+    // 디바운스로 아직 기록되지 않은 최신 편집을 먼저 확정 (Ctrl+Z 가 한 박자 늦지 않도록)
+    if (dir < 0 && codeInput.value !== history.stack[history.idx]) {
+      pushHistory(codeInput.value);
+    }
     const next = history.idx + dir;
     if (next < 0 || next >= history.stack.length) return;
     history.idx = next;
@@ -430,6 +439,11 @@
       .__lh_guide { position: fixed; background: #FF2E92; z-index: 2147483646; pointer-events: none; }
       .__lh_guide.v { width: 1.5px; }
       .__lh_guide.h { height: 1.5px; }
+      .__lh_marquee {
+        position: fixed; z-index: 2147483646; pointer-events: none;
+        border: 1.5px solid #246BEB; background: rgba(36,107,235,.12);
+        border-radius: 2px;
+      }
       .__lh_pagelabel {
         position: absolute; z-index: 2147483000; pointer-events: auto; cursor: pointer;
         background: rgba(30,33,36,.72); color: #fff;
@@ -653,12 +667,22 @@
     return false;
   }
 
+  /** 현재 선택된 모든 요소 (대표 + 추가 선택) */
+  function selEls() {
+    const list = [];
+    if (selectedEl) list.push(selectedEl);
+    extraSel.forEach((e) => { if (e && e !== selectedEl && !list.includes(e)) list.push(e); });
+    return list;
+  }
+
   function clearSelection() {
     if (editingEl) endTextEdit(false);
-    if (selectedEl) {
-      try { selectedEl.removeAttribute("data-lh-selected"); } catch (_) {}
-      selectedEl = null;
-    }
+    try {
+      iframe.contentDocument?.querySelectorAll("[data-lh-selected]")
+        .forEach((e) => e.removeAttribute("data-lh-selected"));
+    } catch (_) {}
+    selectedEl = null;
+    extraSel = [];
     editToolbar.hidden = true;
     closeFontPanel();
     closeEffectPanel();
@@ -668,26 +692,64 @@
     updateHandles();
   }
 
-  function selectElement(el) {
-    if (editingEl && editingEl !== el) endTextEdit();
-    if (selectedEl) selectedEl.removeAttribute("data-lh-selected");
-    selectedEl = el;
-    el.setAttribute("data-lh-selected", "");
+  /** 대표 선택 요소에 맞춰 도구 바 정보 갱신 */
+  function refreshToolbarForSelection() {
+    const el = selectedEl;
+    if (!el) { editToolbar.hidden = true; return; }
     const pageSel = isPageEl(el);
-    selChip.textContent = pageSel
-      ? `페이지 ${el.getAttribute("data-lh-page") || ""}`.trim()
-      : el.tagName.toLowerCase();
-    $("#btnImage").hidden = el.tagName.toUpperCase() !== "IMG";
-    $("#btnLock").hidden = pageSel; // 페이지는 항상 고정이라 잠금 버튼 불필요
+    const multi = extraSel.length > 0;
+    selChip.textContent = multi
+      ? `${selEls().length}개 선택`
+      : pageSel
+        ? `페이지 ${el.getAttribute("data-lh-page") || ""}`.trim()
+        : el.tagName.toLowerCase();
+    $("#btnImage").hidden = multi || el.tagName.toUpperCase() !== "IMG";
+    $("#btnLock").hidden = !multi && pageSel; // 페이지는 항상 고정이라 잠금 버튼 불필요
     $("#lockIcon").textContent = isLockedEl(el) ? "lock" : "lock_open";
     $("#btnLock").classList.toggle("locked", isLockedEl(el));
     editToolbar.hidden = false;
+    updateFontChip();
+    updateFontSizeInput();
+  }
+
+  /**
+   * 요소 선택. opts.additive=true 이면 다중 선택 토글(Ctrl+클릭).
+   */
+  function selectElement(el, opts = {}) {
+    if (editingEl && editingEl !== el) endTextEdit();
+
+    if (opts.additive && selectedEl) {
+      // Ctrl+클릭: 이미 선택된 요소면 해제, 아니면 추가
+      if (el === selectedEl || extraSel.includes(el)) {
+        el.removeAttribute("data-lh-selected");
+        extraSel = extraSel.filter((x) => x !== el);
+        if (el === selectedEl) selectedEl = extraSel.pop() || null;
+        if (!selectedEl) { clearSelection(); return; }
+      } else {
+        if (selectedEl && !extraSel.includes(selectedEl)) extraSel.push(selectedEl);
+        selectedEl = el;
+        el.setAttribute("data-lh-selected", "");
+      }
+      refreshToolbarForSelection();
+      updateHandles();
+      return;
+    }
+
+    // 단일 선택(기존 선택 모두 해제)
+    if (selectedEl || extraSel.length) {
+      try {
+        iframe.contentDocument?.querySelectorAll("[data-lh-selected]")
+          .forEach((e) => e.removeAttribute("data-lh-selected"));
+      } catch (_) {}
+    }
+    extraSel = [];
+    selectedEl = el;
+    el.setAttribute("data-lh-selected", "");
     closeFontPanel();
     closeEffectPanel();
     closeStylePanel();
     // 배경색 패널은 유지 — 다음 페이지를 선택해서 최근 색을 바로 쓸 수 있게
-    updateFontChip();
-    updateFontSizeInput();
+    refreshToolbarForSelection();
     updateHandles();
   }
 
@@ -765,9 +827,12 @@
 
   function nudgeSelected(dx, dy) {
     if (!selectedEl || editingEl) return;
-    if (isPageEl(selectedEl) || isLockedEl(selectedEl)) return;
-    const t = getTranslate(selectedEl);
-    setTranslate(selectedEl, t.x + dx, t.y + dy);
+    const movers = selEls().filter((el) => !isPageEl(el) && !isLockedEl(el));
+    if (!movers.length) return;
+    movers.forEach((el) => {
+      const t = getTranslate(el);
+      setTranslate(el, t.x + dx, t.y + dy);
+    });
     updateHandles();
     syncFromPreviewDebounced();
   }
@@ -776,7 +841,7 @@
   function updateHandles() {
     const doc = iframe.contentDocument;
     if (!doc || !doc.body) return;
-    const want = selectedEl && !editingEl && editMode &&
+    const want = selectedEl && extraSel.length === 0 && !editingEl && editMode &&
       !isPageEl(selectedEl) && !isLockedEl(selectedEl);
     const existing = [...doc.querySelectorAll(".__lh_handle")];
     if (!want) { existing.forEach((h) => h.remove()); return; }
@@ -847,14 +912,37 @@
     } catch (_) {}
   }
 
+  /** 사각형(뷰포트 좌표)과 겹치는 요소들을 한 번에 선택 */
+  function selectInRect(rect, page) {
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return;
+    const root = page && page !== doc.body ? page : doc.body;
+    let hits = [...root.querySelectorAll("*")].filter((el) => {
+      if (!isEditableTarget(el) || isPageEl(el)) return false;
+      if (el.closest(".__lh_ui")) return false;
+      const r = el.getBoundingClientRect();
+      if (r.width < 6 || r.height < 6) return false;
+      return r.right > rect.left && r.left < rect.right &&
+             r.bottom > rect.top && r.top < rect.bottom;
+    });
+    // 다른 선택 요소의 자식은 제외 (가장 바깥 요소만)
+    hits = hits.filter((el) => !hits.some((o) => o !== el && o.contains(el)));
+    if (!hits.length) { clearSelection(); return; }
+    clearSelection();
+    hits.forEach((el, i) => selectElement(el, { additive: i > 0 }));
+    if (hits.length > 1) toast(`요소 ${hits.length}개를 선택했어요`, "select_all");
+  }
+
+  let suppressNextClick = false; // 마퀴 선택 직후의 click 무시용
   function attachPreviewEvents(doc) {
     let hoverEl = null;
     let drag = null;
     let resize = null;
     let rotate = null;
+    let marquee = null;
 
     doc.addEventListener("mouseover", (e) => {
-      if (!editMode || editingEl || drag || resize || rotate) return;
+      if (!editMode || editingEl || drag || resize || rotate || marquee) return;
       if (hoverEl) hoverEl.removeAttribute("data-lh-hover");
       hoverEl = null;
       if (isEditableTarget(e.target) && e.target !== selectedEl) {
@@ -873,14 +961,20 @@
       if (a) e.preventDefault();
       if (!editMode) return;
       e.preventDefault();
+      // 마퀴(드래그 박스) 선택 직후의 click 은 무시
+      if (suppressNextClick) { suppressNextClick = false; return; }
       closeInsertPanel();
       if (editingEl) {
         if (e.target === editingEl || editingEl.contains(e.target)) return;
         endTextEdit();
       }
-      if (isEditableTarget(e.target)) {
-        if (e.target !== selectedEl) selectElement(e.target);
-      } else {
+      const additive = e.ctrlKey || e.metaKey;
+      // 페이지(배경)는 직접 선택하지 않음 → 빈 곳 클릭은 선택 해제. 페이지는 '페이지 N' 라벨로만 선택
+      if (isEditableTarget(e.target) && !isPageEl(e.target)) {
+        if (additive || e.target !== selectedEl || extraSel.length) {
+          selectElement(e.target, { additive });
+        }
+      } else if (!additive) {
         clearSelection();
       }
     }, true);
@@ -938,28 +1032,48 @@
         return;
       }
 
-      // 3) 선택된 요소 드래그 이동
-      if (!selectedEl || (e.target !== selectedEl && !selectedEl.contains(e.target))) return;
-      // 페이지와 잠긴 요소는 움직이지 않음
-      if (isPageEl(selectedEl)) {
-        if (e.target === selectedEl) toast("페이지는 고정되어 있어요. 안의 요소만 움직일 수 있어요", "lock");
+      // Ctrl/⌘ + 누르기는 드래그가 아니라 다중 선택 토글 → click 에서 처리
+      if (e.ctrlKey || e.metaKey) return;
+
+      // 3) 선택된 요소(여러 개 가능) 드래그 이동
+      const grabbed = selEls().find((el) => el === e.target || el.contains(e.target));
+      if (grabbed && !isPageEl(grabbed)) {
+        if (isLockedEl(grabbed)) { guardLocked(); return; }
+        const movers = selEls().filter((el) => !isPageEl(el) && !isLockedEl(el));
+        if (!movers.length) return;
+        const er = grabbed.getBoundingClientRect();
+        const parent = grabbed.parentElement || doc.body;
+        const pr = parent.getBoundingClientRect();
+        drag = {
+          sx: e.clientX, sy: e.clientY,
+          movers: movers.map((el) => ({ el, base: getTranslate(el) })),
+          multi: movers.length > 1,
+          c0x: er.left + er.width / 2, c0y: er.top + er.height / 2,
+          pcx: pr.left + pr.width / 2, pcy: pr.top + pr.height / 2,
+          pr,
+          moved: false,
+        };
+        try { grabbed.setPointerCapture(e.pointerId); } catch (_) {}
+        e.preventDefault();
         return;
       }
-      if (isLockedEl(selectedEl)) { guardLocked(); return; }
-      const start = getTranslate(selectedEl);
-      const er = selectedEl.getBoundingClientRect();
-      const parent = selectedEl.parentElement || doc.body;
-      const pr = parent.getBoundingClientRect();
-      drag = {
-        sx: e.clientX, sy: e.clientY,
-        bx: start.x, by: start.y,
-        c0x: er.left + er.width / 2, c0y: er.top + er.height / 2,
-        pcx: pr.left + pr.width / 2, pcy: pr.top + pr.height / 2,
-        pr,
-        moved: false,
-      };
-      try { selectedEl.setPointerCapture(e.pointerId); } catch (_) {}
-      e.preventDefault();
+
+      // 4) 빈 페이지 배경에서 누르기 → 마퀴(드래그 박스) 다중 선택
+      if (isPageEl(e.target) || e.target === doc.body) {
+        marquee = {
+          sx: e.clientX, sy: e.clientY,
+          page: isPageEl(e.target) ? e.target : null,
+          box: null, moved: false,
+        };
+        try { doc.body.setPointerCapture(e.pointerId); } catch (_) {}
+        e.preventDefault();
+        return;
+      }
+
+      // 선택된 요소가 있는데 그 바깥(다른 요소 위)을 눌렀다면 드래그 안 함 (click 이 재선택 처리)
+      if (isPageEl(selectedEl) && e.target === selectedEl) {
+        toast("페이지는 고정되어 있어요. 안의 요소만 움직일 수 있어요", "lock");
+      }
     });
 
     doc.addEventListener("pointermove", (e) => {
@@ -1029,20 +1143,41 @@
         return;
       }
 
+      // 마퀴(드래그 박스) 그리기
+      if (marquee) {
+        const x = Math.min(marquee.sx, e.clientX), y = Math.min(marquee.sy, e.clientY);
+        const w = Math.abs(e.clientX - marquee.sx), h = Math.abs(e.clientY - marquee.sy);
+        if (!marquee.moved && Math.hypot(w, h) < 4) return;
+        marquee.moved = true;
+        if (!marquee.box) {
+          marquee.box = doc.createElement("div");
+          marquee.box.className = "__lh_ui __lh_marquee";
+          doc.body.appendChild(marquee.box);
+        }
+        marquee.box.style.left = x + "px";
+        marquee.box.style.top = y + "px";
+        marquee.box.style.width = w + "px";
+        marquee.box.style.height = h + "px";
+        return;
+      }
+
       // 이동 + 가운데 정렬 스냅
-      if (!drag || !selectedEl) return;
+      if (!drag) return;
       let dx = e.clientX - drag.sx;
       let dy = e.clientY - drag.sy;
       if (!drag.moved && Math.hypot(dx, dy) < 3) return;
       drag.moved = true;
 
-      const cx = drag.c0x + dx;
-      const cy = drag.c0y + dy;
       let snapX = false, snapY = false;
-      if (Math.abs(cx - drag.pcx) < SNAP_DIST) { dx += drag.pcx - cx; snapX = true; }
-      if (Math.abs(cy - drag.pcy) < SNAP_DIST) { dy += drag.pcy - cy; snapY = true; }
+      if (!drag.multi) {
+        // 단일 선택일 때만 가운데 정렬 스냅
+        const cx = drag.c0x + dx;
+        const cy = drag.c0y + dy;
+        if (Math.abs(cx - drag.pcx) < SNAP_DIST) { dx += drag.pcx - cx; snapX = true; }
+        if (Math.abs(cy - drag.pcy) < SNAP_DIST) { dy += drag.pcy - cy; snapY = true; }
+      }
 
-      setTranslate(selectedEl, drag.bx + dx, drag.by + dy);
+      drag.movers.forEach((m) => setTranslate(m.el, m.base.x + dx, m.base.y + dy));
       updateHandles();
 
       if (snapX) showGuide(doc, "v", drag.pr, drag.pcx);
@@ -1057,6 +1192,15 @@
       if (resize) { resize = null; syncFromPreview(); }
       if (drag && drag.moved) syncFromPreview();
       drag = null;
+      if (marquee) {
+        if (marquee.moved && marquee.box) {
+          const mr = marquee.box.getBoundingClientRect();
+          selectInRect(mr, marquee.page);
+          suppressNextClick = true; // 직후 click 으로 선택이 풀리지 않도록
+        }
+        if (marquee.box) marquee.box.remove();
+        marquee = null;
+      }
     };
     doc.addEventListener("pointerup", endPointer);
     doc.addEventListener("pointercancel", endPointer);
@@ -1065,6 +1209,14 @@
     doc.addEventListener("input", () => syncFromPreviewDebounced());
 
     doc.addEventListener("keydown", (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      // 미리보기(iframe)에 포커스가 있을 때도 실행 취소/다시 실행이 되도록
+      if (mod && e.key.toLowerCase() === "z" && !e.shiftKey && !editingEl) {
+        e.preventDefault(); applyHistory(-1); return;
+      }
+      if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey)) && !editingEl) {
+        e.preventDefault(); applyHistory(1); return;
+      }
       if (e.key === "Escape") {
         if (editingEl) endTextEdit();
         else clearSelection();
@@ -1085,14 +1237,15 @@
 
   /* ---- 편집 도구 바 동작 ---- */
   function deleteSelected() {
-    if (!selectedEl) return;
-    if (isPageEl(selectedEl)) { deletePage(selectedEl); return; }
-    if (isLockedEl(selectedEl)) { guardLocked(); return; }
-    const el = selectedEl;
+    const list = selEls();
+    if (!list.length) return;
+    if (list.length === 1 && isPageEl(list[0])) { deletePage(list[0]); return; }
+    const removable = list.filter((el) => !isPageEl(el) && !isLockedEl(el));
+    if (!removable.length) { guardLocked(); return; }
     clearSelection();
-    el.remove();
+    removable.forEach((el) => el.remove());
     syncFromPreview();
-    toast("요소를 삭제했어요", "delete");
+    toast(removable.length > 1 ? `요소 ${removable.length}개를 삭제했어요` : "요소를 삭제했어요", "delete");
   }
 
   editToolbar.addEventListener("click", (e) => {
@@ -1126,23 +1279,27 @@
         return;
       case "font-dec":
       case "font-inc": {
-        const cur = parseFloat(win.getComputedStyle(el).fontSize) || 16;
-        el.style.fontSize = Math.max(6, cur + (act === "font-inc" ? 2 : -2)) + "px";
+        selEls().forEach((t) => {
+          const cur = parseFloat(win.getComputedStyle(t).fontSize) || 16;
+          t.style.fontSize = Math.max(6, cur + (act === "font-inc" ? 2 : -2)) + "px";
+        });
         updateFontSizeInput();
         break;
       }
       case "bold": {
         const w = win.getComputedStyle(el).fontWeight;
-        el.style.fontWeight = (parseInt(w, 10) >= 600 || w === "bold") ? "400" : "700";
+        const next = (parseInt(w, 10) >= 600 || w === "bold") ? "400" : "700";
+        selEls().forEach((t) => { t.style.fontWeight = next; });
         break;
       }
       case "italic": {
-        el.style.fontStyle = win.getComputedStyle(el).fontStyle === "italic" ? "normal" : "italic";
+        const next = win.getComputedStyle(el).fontStyle === "italic" ? "normal" : "italic";
+        selEls().forEach((t) => { t.style.fontStyle = next; });
         break;
       }
-      case "align-left": el.style.textAlign = "left"; break;
-      case "align-center": el.style.textAlign = "center"; break;
-      case "align-right": el.style.textAlign = "right"; break;
+      case "align-left": selEls().forEach((t) => { t.style.textAlign = "left"; }); break;
+      case "align-center": selEls().forEach((t) => { t.style.textAlign = "center"; }); break;
+      case "align-right": selEls().forEach((t) => { t.style.textAlign = "right"; }); break;
       case "image":
         imgInput.click();
         return;
@@ -1157,19 +1314,25 @@
       }
       case "duplicate": {
         if (isPageEl(el)) { duplicatePage(el); return; }
-        const copy = el.cloneNode(true);
-        copy.removeAttribute("data-lh-selected");
-        copy.removeAttribute("data-lh-page");
-        copy.removeAttribute("data-lh-lock");
-        el.after(copy);
-        const t = getTranslate(copy);
-        setTranslate(copy, t.x + 16, t.y + 16);
-        selectElement(copy);
-        toast("요소를 복제했어요", "content_copy");
+        const targets = selEls().filter((t) => !isPageEl(t));
+        const copies = [];
+        targets.forEach((t) => {
+          const copy = t.cloneNode(true);
+          copy.removeAttribute("data-lh-selected");
+          copy.removeAttribute("data-lh-page");
+          copy.removeAttribute("data-lh-lock");
+          t.after(copy);
+          const tr = getTranslate(copy);
+          setTranslate(copy, tr.x + 16, tr.y + 16);
+          copies.push(copy);
+        });
+        clearSelection();
+        copies.forEach((c, i) => selectElement(c, { additive: i > 0 }));
+        toast(copies.length > 1 ? `요소 ${copies.length}개를 복제했어요` : "요소를 복제했어요", "content_copy");
         break;
       }
       case "reset-pos":
-        setXform(el, 0, 0, 0);
+        selEls().forEach((t) => { if (!isPageEl(t)) setXform(t, 0, 0, 0); });
         updateHandles();
         toast("위치와 회전을 되돌렸어요", "restart_alt");
         break;
@@ -1196,13 +1359,13 @@
     if (!selectedEl || guardLocked()) return;
     const size = Math.min(400, Math.max(6, parseInt(fontSizeInput.value, 10) || 16));
     fontSizeInput.value = size;
-    selectedEl.style.fontSize = size + "px";
+    selEls().forEach((el) => { el.style.fontSize = size + "px"; });
     syncFromPreview();
   });
 
   $("#colorPicker").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
-    selectedEl.style.color = e.target.value;
+    selEls().forEach((el) => { el.style.color = e.target.value; });
     syncFromPreviewDebounced();
   });
   // 글자 색으로 고른 색도 '최근 사용한 색'에 모아 배경색에서 재사용
@@ -1254,9 +1417,11 @@
     none.className = "swatch none";
     none.title = "배경 없음 (원래대로)";
     none.addEventListener("click", () => {
-      if (!selectedEl) return;
-      selectedEl.style.removeProperty("background");
-      selectedEl.style.removeProperty("background-color");
+      if (!selectedEl || guardLocked()) return;
+      selEls().forEach((el) => {
+        el.style.removeProperty("background");
+        el.style.removeProperty("background-color");
+      });
       syncFromPreview();
     });
     wrap.appendChild(none);
@@ -1266,7 +1431,7 @@
   /** 배경색 적용 — 페이지·도형·텍스트 상자 모두 (그라데이션도 단색으로 교체) */
   function applyFill(color, { record = true } = {}) {
     if (!selectedEl || guardLocked()) return;
-    selectedEl.style.background = color;
+    selEls().forEach((el) => { el.style.background = color; });
     syncFromPreviewDebounced();
     if (record) recordRecentColor(color);
   }
@@ -1306,8 +1471,10 @@
     if (!selectedEl || guardLocked()) return;
     lastEffect = type;
     const value = TEXT_EFFECTS[type]($("#effectColor").value);
-    if (value) selectedEl.style.textShadow = value;
-    else selectedEl.style.removeProperty("text-shadow");
+    selEls().forEach((el) => {
+      if (value) el.style.textShadow = value;
+      else el.style.removeProperty("text-shadow");
+    });
     syncFromPreview();
   }
 
@@ -1365,7 +1532,7 @@
 
   $("#shapeFill").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
-    selectedEl.style.backgroundColor = e.target.value;
+    selEls().forEach((el) => { el.style.backgroundColor = e.target.value; });
     recordRecentColor(e.target.value);
     syncFromPreviewDebounced();
   });
@@ -1373,7 +1540,7 @@
   $("#shapeOpacity").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
     const v = parseInt(e.target.value, 10);
-    selectedEl.style.opacity = v / 100;
+    selEls().forEach((el) => { el.style.opacity = v / 100; });
     $("#shapeOpacityVal").textContent = v + "%";
     syncFromPreviewDebounced();
   });
@@ -1382,15 +1549,16 @@
     btn.addEventListener("click", () => {
       if (!selectedEl || guardLocked()) return;
       const style = btn.dataset.bs;
-      if (style === "none") {
-        selectedEl.style.border = "none";
-      } else {
-        selectedEl.style.borderStyle = style;
-        const curW = parseInt(selectedEl.style.borderWidth || "0", 10);
-        if (!curW) {
-          selectedEl.style.borderWidth = "2px";
-          $("#shapeBorderWidth").value = 2;
+      selEls().forEach((el) => {
+        if (style === "none") {
+          el.style.border = "none";
+        } else {
+          el.style.borderStyle = style;
+          if (!parseInt(el.style.borderWidth || "0", 10)) el.style.borderWidth = "2px";
         }
+      });
+      if (style !== "none" && !parseInt(selectedEl.style.borderWidth || "0", 10)) {
+        $("#shapeBorderWidth").value = 2;
       }
       document.querySelectorAll(".bsb").forEach((b) => b.classList.toggle("active", b === btn));
       syncFromPreview();
@@ -1399,25 +1567,27 @@
 
   $("#shapeBorderColor").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
-    selectedEl.style.borderColor = e.target.value;
+    selEls().forEach((el) => { el.style.borderColor = e.target.value; });
     syncFromPreviewDebounced();
   });
 
   $("#shapeBorderWidth").addEventListener("change", (e) => {
     if (!selectedEl || guardLocked()) return;
     const w = Math.max(0, parseInt(e.target.value, 10) || 0);
-    selectedEl.style.borderWidth = w + "px";
-    if (w > 0 && (!selectedEl.style.borderStyle || selectedEl.style.borderStyle === "none")) {
-      selectedEl.style.borderStyle = "solid";
-      document.querySelectorAll(".bsb").forEach((b) => b.classList.toggle("active", b.dataset.bs === "solid"));
-    }
+    selEls().forEach((el) => {
+      el.style.borderWidth = w + "px";
+      if (w > 0 && (!el.style.borderStyle || el.style.borderStyle === "none")) {
+        el.style.borderStyle = "solid";
+      }
+    });
+    if (w > 0) document.querySelectorAll(".bsb").forEach((b) => b.classList.toggle("active", b.dataset.bs === (selectedEl.style.borderStyle || "solid")));
     syncFromPreview();
   });
 
   $("#shapeBorderRadius").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
     const r = parseInt(e.target.value, 10);
-    selectedEl.style.borderRadius = r + "px";
+    selEls().forEach((el) => { el.style.borderRadius = r + "px"; });
     $("#shapeRadiusVal").textContent = r + "px";
     syncFromPreviewDebounced();
   });
@@ -2786,12 +2956,12 @@
     if (!hasTok) { setCloudStatus("", "비밀번호를 입력하면 연결돼요 (스크립트 속성의 SECRET)"); return; }
     if (autoSync) {
       setCloudStatus("ok", lastSyncAt
-        ? `자동 저장 켜짐 · 마지막 백업 ${relTime(lastSyncAt)}`
-        : "자동 저장 켜짐 · 아직 백업한 적 없어요");
+        ? `자동 연결됨(재입력 불필요) · 자동 저장 켜짐 · 마지막 백업 ${relTime(lastSyncAt)}`
+        : "자동 연결됨(재입력 불필요) · 자동 저장 켜짐");
     } else {
       setCloudStatus("ok", lastSyncAt
-        ? `연결됨 · 마지막 백업 ${relTime(lastSyncAt)}`
-        : "연결됨 · [지금 바로 백업]을 눌러 보세요");
+        ? `자동 연결됨(재입력 불필요) · 마지막 백업 ${relTime(lastSyncAt)}`
+        : "자동 연결됨(재입력 불필요) · [지금 바로 백업]을 눌러 보세요");
     }
   }
 
