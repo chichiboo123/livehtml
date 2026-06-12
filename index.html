@@ -121,6 +121,7 @@
           </label>
           <button class="tool-btn" data-act="fill" title="배경(채우기) 색"><span class="material-symbols-outlined">format_color_fill</span></button>
           <button class="tool-btn" data-act="effects" title="글자 효과"><span class="material-symbols-outlined">auto_fix_high</span></button>
+          <button class="tool-btn" data-act="style" title="도형·테두리 스타일"><span class="material-symbols-outlined">tune</span></button>
         </div>
         <div class="tool-group">
           <button class="tool-btn" data-act="align-left" title="왼쪽 정렬"><span class="material-symbols-outlined">format_align_left</span></button>
@@ -167,6 +168,45 @@
         <div class="font-group-title">기본 색</div>
         <div class="swatch-grid" id="basicSwatches"><!-- JS로 생성 --></div>
         <label class="effect-color"><span>직접 고르기</span><input type="color" id="fillPicker" value="#246BEB" /></label>
+      </div>
+
+      <!-- 도형·테두리 스타일 패널 -->
+      <div class="font-panel style-panel" id="stylePanel" hidden>
+        <div class="font-group-title" style="padding-top:12px">도형 스타일</div>
+        <div class="style-rows">
+          <label class="style-row">
+            <span>채우기 색</span>
+            <input type="color" id="shapeFill" value="#ffffff" />
+          </label>
+          <label class="style-row">
+            <span>불투명도</span>
+            <input type="range" id="shapeOpacity" min="0" max="100" step="1" value="100" />
+            <span id="shapeOpacityVal" class="style-val">100%</span>
+          </label>
+          <div class="style-row-group">
+            <span class="style-row-label">테두리 모양</span>
+            <div class="border-style-btns">
+              <button type="button" class="bsb" data-bs="none">없음</button>
+              <button type="button" class="bsb" data-bs="solid">─</button>
+              <button type="button" class="bsb" data-bs="dashed">- -</button>
+              <button type="button" class="bsb" data-bs="dotted">···</button>
+            </div>
+          </div>
+          <label class="style-row">
+            <span>테두리 색</span>
+            <input type="color" id="shapeBorderColor" value="#1e2124" />
+          </label>
+          <label class="style-row">
+            <span>테두리 두께</span>
+            <input type="number" id="shapeBorderWidth" class="size-input" min="0" max="50" step="1" value="1" />
+            <span class="style-val">px</span>
+          </label>
+          <label class="style-row">
+            <span>모서리 둥글기</span>
+            <input type="range" id="shapeBorderRadius" min="0" max="200" step="1" value="0" />
+            <span id="shapeRadiusVal" class="style-val">0px</span>
+          </label>
+        </div>
       </div>
 
       <div class="preview-viewport" id="previewViewport">

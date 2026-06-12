@@ -43,6 +43,7 @@
   const insertPanel = $("#insertPanel");
   const effectPanel = $("#effectPanel");
   const fillPanel = $("#fillPanel");
+  const stylePanel = $("#stylePanel");
 
   const H2C_SRC = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
   const JSZIP_SRC = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
@@ -303,6 +304,10 @@
         !(e.target.closest && e.target.closest("[data-act='fill']"))) {
       closeFillPanel();
     }
+    if (!stylePanel.hidden && !stylePanel.contains(e.target) &&
+        !(e.target.closest && e.target.closest("[data-act='style']"))) {
+      closeStylePanel();
+    }
   });
 
   /* ============================================================
@@ -445,13 +450,15 @@
       .__lh_handle.rot:active { cursor: grabbing; }
       .__lh_pagebar {
         position: absolute; z-index: 2147483000; display: flex; gap: 6px;
-        pointer-events: auto;
+        pointer-events: auto; flex-wrap: nowrap; align-items: center;
       }
       .__lh_pagebar button {
         border: none; cursor: pointer;
-        background: rgba(30,33,36,.72); color: #fff;
-        font: 700 13px/1 Pretendard, 'Apple SD Gothic Neo', sans-serif;
-        padding: 5px 10px; border-radius: 99px;
+        background: rgba(30,33,36,.82); color: #fff;
+        font: 700 13px/1.3 Pretendard, 'Apple SD Gothic Neo', sans-serif;
+        padding: 6px 13px; border-radius: 99px;
+        white-space: nowrap; display: inline-flex; align-items: center;
+        box-sizing: border-box;
       }
       .__lh_pagebar button:hover { background: #246BEB; }
       .__lh_pagebar button.danger:hover { background: #EB003B; }
@@ -656,6 +663,7 @@
     closeFontPanel();
     closeEffectPanel();
     closeFillPanel();
+    closeStylePanel();
     removeGuides();
     updateHandles();
   }
@@ -676,6 +684,7 @@
     editToolbar.hidden = false;
     closeFontPanel();
     closeEffectPanel();
+    closeStylePanel();
     // 배경색 패널은 유지 — 다음 페이지를 선택해서 최근 색을 바로 쓸 수 있게
     updateFontChip();
     updateFontSizeInput();
@@ -1170,6 +1179,9 @@
       case "effects":
         effectPanel.hidden ? openEffectPanel() : closeEffectPanel();
         return;
+      case "style":
+        stylePanel.hidden ? openStylePanel() : closeStylePanel();
+        return;
       case "delete":
         deleteSelected();
         return;
@@ -1263,6 +1275,7 @@
     if (!selectedEl) return;
     closeFontPanel();
     closeEffectPanel();
+    closeStylePanel();
     closeInsertPanel();
     renderRecentSwatches();
     fillPanel.hidden = false;
@@ -1303,9 +1316,111 @@
     closeFontPanel();
     closeInsertPanel();
     closeFillPanel();
+    closeStylePanel();
     effectPanel.hidden = false;
   }
   function closeEffectPanel() { effectPanel.hidden = true; }
+
+  /* ---- 도형·스타일 패널 ---- */
+  function rgbToHex(rgb) {
+    if (!rgb || rgb === "transparent") return null;
+    if (rgb.startsWith("#")) return rgb;
+    const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!m) return null;
+    return "#" + [m[1], m[2], m[3]].map((n) => parseInt(n, 10).toString(16).padStart(2, "0")).join("");
+  }
+
+  function syncStylePanel(el) {
+    if (!el) return;
+    const win = iframe.contentWindow;
+    const cs = win.getComputedStyle(el);
+    const bgHex = rgbToHex(el.style.backgroundColor || cs.backgroundColor);
+    if (bgHex) $("#shapeFill").value = bgHex;
+    const opRaw = el.style.opacity !== "" && el.style.opacity != null ? el.style.opacity : cs.opacity;
+    const opPct = isNaN(parseFloat(opRaw)) ? 100 : Math.round(parseFloat(opRaw) * 100);
+    $("#shapeOpacity").value = opPct;
+    $("#shapeOpacityVal").textContent = opPct + "%";
+    const bsVal = el.style.borderStyle || cs.borderStyle || "none";
+    const bsNorm = ["solid", "dashed", "dotted"].includes(bsVal) ? bsVal : "none";
+    document.querySelectorAll(".bsb").forEach((b) => b.classList.toggle("active", b.dataset.bs === bsNorm));
+    const bcHex = rgbToHex(el.style.borderColor || cs.borderColor);
+    if (bcHex) $("#shapeBorderColor").value = bcHex;
+    const bw = parseInt(el.style.borderWidth || cs.borderTopWidth || "0", 10) || 0;
+    $("#shapeBorderWidth").value = bw;
+    const br = Math.min(200, parseInt(el.style.borderRadius || cs.borderRadius || "0", 10) || 0);
+    $("#shapeBorderRadius").value = br;
+    $("#shapeRadiusVal").textContent = br + "px";
+  }
+
+  function openStylePanel() {
+    if (!selectedEl) return;
+    closeFontPanel();
+    closeEffectPanel();
+    closeFillPanel();
+    closeInsertPanel();
+    syncStylePanel(selectedEl);
+    stylePanel.hidden = false;
+  }
+  function closeStylePanel() { stylePanel.hidden = true; }
+
+  $("#shapeFill").addEventListener("input", (e) => {
+    if (!selectedEl || guardLocked()) return;
+    selectedEl.style.backgroundColor = e.target.value;
+    recordRecentColor(e.target.value);
+    syncFromPreviewDebounced();
+  });
+
+  $("#shapeOpacity").addEventListener("input", (e) => {
+    if (!selectedEl || guardLocked()) return;
+    const v = parseInt(e.target.value, 10);
+    selectedEl.style.opacity = v / 100;
+    $("#shapeOpacityVal").textContent = v + "%";
+    syncFromPreviewDebounced();
+  });
+
+  document.querySelectorAll(".bsb").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!selectedEl || guardLocked()) return;
+      const style = btn.dataset.bs;
+      if (style === "none") {
+        selectedEl.style.border = "none";
+      } else {
+        selectedEl.style.borderStyle = style;
+        const curW = parseInt(selectedEl.style.borderWidth || "0", 10);
+        if (!curW) {
+          selectedEl.style.borderWidth = "2px";
+          $("#shapeBorderWidth").value = 2;
+        }
+      }
+      document.querySelectorAll(".bsb").forEach((b) => b.classList.toggle("active", b === btn));
+      syncFromPreview();
+    });
+  });
+
+  $("#shapeBorderColor").addEventListener("input", (e) => {
+    if (!selectedEl || guardLocked()) return;
+    selectedEl.style.borderColor = e.target.value;
+    syncFromPreviewDebounced();
+  });
+
+  $("#shapeBorderWidth").addEventListener("change", (e) => {
+    if (!selectedEl || guardLocked()) return;
+    const w = Math.max(0, parseInt(e.target.value, 10) || 0);
+    selectedEl.style.borderWidth = w + "px";
+    if (w > 0 && (!selectedEl.style.borderStyle || selectedEl.style.borderStyle === "none")) {
+      selectedEl.style.borderStyle = "solid";
+      document.querySelectorAll(".bsb").forEach((b) => b.classList.toggle("active", b.dataset.bs === "solid"));
+    }
+    syncFromPreview();
+  });
+
+  $("#shapeBorderRadius").addEventListener("input", (e) => {
+    if (!selectedEl || guardLocked()) return;
+    const r = parseInt(e.target.value, 10);
+    selectedEl.style.borderRadius = r + "px";
+    $("#shapeRadiusVal").textContent = r + "px";
+    syncFromPreviewDebounced();
+  });
 
   effectPanel.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-effect]");
@@ -1609,7 +1724,19 @@
     iframe.style.height = contentH + "px";
     lastContentH = contentH;
 
-    const scale = zoomMode === "fit" ? Math.min(1, baseW / contentW) : parseInt(zoomMode, 10) / 100;
+    let scale;
+    if (zoomMode === "fit") {
+      const baseH = Math.max(200, previewViewport.clientHeight - pad);
+      let firstPageH = contentH;
+      const pts = detectPages();
+      if (pts.length > 0 && pts[0] !== doc.body) {
+        const ph = pts[0].getBoundingClientRect().height;
+        if (ph > 10) firstPageH = ph;
+      }
+      scale = Math.min(1, baseW / contentW, baseH / firstPageH);
+    } else {
+      scale = parseInt(zoomMode, 10) / 100;
+    }
     currentScale = scale;
     iframe.style.transform = `scale(${scale})`;
     previewCanvas.style.width = contentW * scale + "px";
@@ -1985,6 +2112,7 @@
       if (!fontPanel.hidden) closeFontPanel();
       else if (!effectPanel.hidden) closeEffectPanel();
       else if (!fillPanel.hidden) closeFillPanel();
+      else if (!stylePanel.hidden) closeStylePanel();
       else if (!insertPanel.hidden) closeInsertPanel();
       else if (!downloadModal.hidden) closeDownloadModal();
       else if (!mcModal.hidden) closeMagic();
@@ -2774,9 +2902,9 @@
     renderPreview();
     pushHistory("");
   }
-  // 처음 방문이면 사용 방법을 한 번 보여줌
+  // 처음 방문이면 사용 방법을 한 번 보여줌 (localStorage 기준, 복원 여부 무관)
   try {
-    if (!restored && !localStorage.getItem("livehtml:helpSeen")) {
+    if (!localStorage.getItem("livehtml:helpSeen")) {
       localStorage.setItem("livehtml:helpSeen", "1");
       setTimeout(openHelp, 700);
     }
