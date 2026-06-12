@@ -46,6 +46,7 @@
   const stylePanel = $("#stylePanel");
 
   const H2C_SRC = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+  const HTI_SRC = "https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js";
   const JSZIP_SRC = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
   const AUTOSAVE_KEY = "livehtml:autosave";
   const SNAP_DIST = 6; // 가운데 정렬 스냅 허용 거리(px)
@@ -2162,6 +2163,45 @@
     });
   }
 
+  function ensureHtmlToImage() {
+    const win = iframe.contentWindow;
+    if (win.htmlToImage) return Promise.resolve(win.htmlToImage);
+    return new Promise((resolve, reject) => {
+      const doc = iframe.contentDocument;
+      const s = doc.createElement("script");
+      s.src = HTI_SRC;
+      s.setAttribute("data-lh", "");
+      s.onload = () => resolve(win.htmlToImage);
+      s.onerror = () => reject(new Error("html-to-image load failed"));
+      (doc.head || doc.documentElement).appendChild(s);
+    });
+  }
+
+  // 편집용 UI(핸들·라벨 등)는 캡처에서 제외
+  const notEditorUi = (n) =>
+    !(n.className && typeof n.className === "string" && n.className.includes("__lh_"));
+
+  /**
+   * 페이지 요소 → 캔버스.
+   * 1순위 html-to-image: SVG foreignObject 방식이라 브라우저가 그린 화면 그대로 캡처됨
+   *   (html2canvas는 CSS를 자체 재구현해 그리는 방식이라 둥근 모서리+그림자 조합이 흰 상자로 깨짐)
+   * 2순위 html2canvas: 위가 실패할 때만 (구형 브라우저 등)
+   */
+  async function snapshotPage(el, scale) {
+    try {
+      const hti = await ensureHtmlToImage();
+      return await hti.toCanvas(el, {
+        pixelRatio: scale,
+        backgroundColor: "#ffffff",
+        filter: notEditorUi,
+      });
+    } catch (err) {
+      console.warn("html-to-image 실패 — html2canvas로 대체합니다", err);
+    }
+    const h2c = await ensureHtml2Canvas();
+    return h2c(el, { scale, useCORS: true, allowTaint: false, logging: false });
+  }
+
   const canvasToBlob = (canvas) =>
     new Promise((res) => canvas.toBlob(res, "image/png"));
 
@@ -2179,16 +2219,13 @@
     dlPngBtn.disabled = true;
     clearPageMarkers(); // 점선·라벨이 이미지에 찍히지 않도록 제거
     try {
-      const h2c = await ensureHtml2Canvas();
       const canvases = [];
       for (let i = 0; i < checked.length; i++) {
         dlPngLabel.textContent = `변환 중… (${i + 1}/${checked.length})`;
         const r = checked[i].getBoundingClientRect();
         const maxSide = Math.max(r.width, r.height) || 1;
         const scale = targetSide ? Math.min(8, Math.max(1, targetSide / maxSide)) : 1;
-        canvases.push(await h2c(checked[i], {
-          scale, useCORS: true, allowTaint: false, logging: false,
-        }));
+        canvases.push(await snapshotPage(checked[i], scale));
       }
 
       if (mode === "merge" && canvases.length > 1) {
@@ -2699,11 +2736,7 @@
       const pgs = pages.length ? pages : detectPages();
       const el = pgs[0] || doc.body;
       const r = el.getBoundingClientRect();
-      const h2c = await ensureHtml2Canvas();
-      const canvas = await h2c(el, {
-        scale: Math.min(1, 320 / Math.max(r.width, 1)),
-        useCORS: true, logging: false,
-      });
+      const canvas = await snapshotPage(el, Math.min(1, 320 / Math.max(r.width, 1)));
       return canvas.toDataURL("image/jpeg", 0.75);
     } catch (_) {
       return null;
