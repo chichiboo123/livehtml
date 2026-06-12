@@ -77,11 +77,24 @@
         `<div style="position:absolute;left:0;right:0;bottom:10%;height:5px;background:#FFFFFF;opacity:.9;"></div>` +
         // 베이스
         `<div style="position:absolute;left:8%;top:10%;width:30px;height:30px;background:#F8F4EA;transform:rotate(45deg);opacity:.92;box-shadow:0 2px 4px rgba(0,0,0,.2);"></div>` +
-        // 야구공 (실밥 두 줄)
-        `<div style="position:absolute;top:7%;right:8%;width:76px;height:76px;border-radius:50%;background:#F8F4EA;overflow:hidden;box-shadow:0 3px 8px rgba(0,0,0,.3);">` +
-        `<div style="position:absolute;left:-48px;top:-9px;width:94px;height:94px;border-radius:50%;border:3px dashed ${t.primary};"></div>` +
-        `<div style="position:absolute;right:-48px;top:-9px;width:94px;height:94px;border-radius:50%;border:3px dashed ${t.primary};"></div>` +
-        `</div>`,
+        // 야구공 — 두 개의 굴곡 솔기와 실밥으로 실제 야구공처럼 표현
+        `<div style="position:absolute;top:7%;right:8%;width:76px;height:76px;border-radius:50%;background:linear-gradient(135deg,#FFFEF8,#EDE8DC);overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.7);">` +
+        `<svg viewBox="0 0 76 76" style="width:76px;height:76px;">` +
+        `<path d="M26,6 C10,22 10,54 26,70" fill="none" stroke="#C8282A" stroke-width="2" stroke-linecap="round"/>` +
+        `<path d="M50,6 C66,22 66,54 50,70" fill="none" stroke="#C8282A" stroke-width="2" stroke-linecap="round"/>` +
+        `<line x1="26" y1="17" x2="33" y2="15" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="24" y1="26" x2="33" y2="24" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="22" y1="34" x2="33" y2="34" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="22" y1="42" x2="33" y2="43" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="24" y1="50" x2="33" y2="52" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="26" y1="58" x2="33" y2="61" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="50" y1="17" x2="43" y2="15" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="52" y1="26" x2="43" y2="24" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="54" y1="34" x2="43" y2="34" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="54" y1="42" x2="43" y2="43" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="52" y1="50" x2="43" y2="52" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `<line x1="50" y1="58" x2="43" y2="61" stroke="#C8282A" stroke-width="1.5" stroke-linecap="round"/>` +
+        `</svg></div>`,
     },
     {
       id: "wizard", emoji: "🪄", name: "마법 아카데미",
@@ -346,7 +359,7 @@
   .toc-row { display: flex; align-items: baseline; gap: ${px(24, k)}; font-size: ${px(34, k)}; padding: ${px(24, k)} ${px(6, k)}; border-bottom: 1.5px dashed var(--sub); }
   .toc-row .num { font-family: ${t.headFont}; font-size: ${px(30, k)}; font-weight: 800; color: var(--primary); }
   .body-text { font-size: ${px(28, k)}; line-height: 1.85; margin: 0 0 ${px(22, k)}; }
-  .hl { background: var(--surface); border-left: ${px(8, k)} solid var(--primary); border-radius: ${t.radius}; padding: ${px(24, k)} ${px(30, k)}; font-size: ${px(27, k)}; line-height: 1.7; margin-top: ${px(10, k)}; }
+  .hl { background: var(--surface); border-radius: ${t.radius}; padding: ${px(24, k)} ${px(30, k)}; font-size: ${px(27, k)}; line-height: 1.7; margin-top: ${px(10, k)}; }
   .imgph { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: ${px(12, k)}; height: 52%; border: 3px dashed var(--sub); border-radius: ${t.radius}; background: var(--surface); color: var(--sub); font-size: ${px(26, k)}; text-align: center; line-height: 1.6; }
   .imgph .ph-ic { font-size: ${px(64, k)}; line-height: 1; }
   .caption { margin-top: ${px(18, k)}; font-size: ${px(23, k)}; color: var(--sub); text-align: center; }
@@ -399,17 +412,15 @@ ${fontLinks(t.fonts)}
 
   const textPage = (t, fmt, total) => `  <div class="page">
     <h2>01. 첫 번째 이야기</h2>
-    <p class="body-text">본문 내용을 입력하세요. 두 번 누르면 바로 고칠 수 있어요.
-    문장은 짧게, 줄은 여유 있게 쓰면 읽기 편한 카드가 됩니다.</p>
-    <p class="body-text">이어지는 내용을 적어 보세요. 숫자나 사례를 곁들이면
-    설득력이 높아져요.</p>
+    <p class="body-text">본문 내용을 입력하세요. 두 번 누르면 바로 고칠 수 있어요. 문장은 짧게, 줄은 여유 있게 쓰면 읽기 편한 카드가 됩니다.</p>
+    <p class="body-text">이어지는 내용을 적어 보세요. 숫자나 사례를 곁들이면 설득력이 높아져요.</p>
     <div class="hl">💡 꼭 기억할 한 문장을 여기에 강조해 보세요.</div>
     <span class="pagenum">3 / ${total}</span>
   </div>`;
 
   const imagePage = (t, fmt, total) => `  <div class="page">
     <h2>02. 두 번째 이야기</h2>
-    <div class="imgph"><span class="ph-ic">🖼️</span>이 상자를 지우고, 오른쪽 아래 + 버튼으로<br>이미지를 넣어 주세요</div>
+    <div class="imgph"><span class="ph-ic">🖼️</span>이 상자를 지우고<br>오른쪽 아래 + 버튼으로 이미지를 넣어 주세요</div>
     <p class="caption">이미지 설명(캡션)을 적어 주세요.</p>
     <span class="pagenum">4 / ${total}</span>
   </div>`;

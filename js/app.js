@@ -547,11 +547,11 @@
     if (!doc) return;
     try {
       doc.querySelectorAll("[data-lh-page]").forEach((e) => e.removeAttribute("data-lh-page"));
-      doc.querySelectorAll(".__lh_pagelabel").forEach((e) => e.remove());
+      doc.querySelectorAll(".__lh_pagelabel, .__lh_pagebar").forEach((e) => e.remove());
     } catch (_) {}
   }
 
-  /** 편집 모드에서 페이지마다 점선 테두리 + '페이지 N' 라벨 표시 */
+  /** 편집 모드에서 페이지마다 점선 테두리 + 페이지 번호·추가·복제·삭제 컨트롤 표시 */
   function refreshPageMarkers() {
     const doc = iframe.contentDocument;
     if (!doc || !doc.body) return;
@@ -559,39 +559,51 @@
     pages = detectPages();
     if (!editMode || !codeInput.value.trim()) return;
     const win = iframe.contentWindow;
+
+    // 현재 줌 배율의 역수로 버튼 크기를 보정 → 작은 배율에서도 항상 읽을 수 있는 크기
+    const s = Math.max(1, Math.min(3.5, 1 / (currentScale || 1)));
+    const fs = Math.round(13 * s);         // 글자 크기 (iframe document px)
+    const padV = Math.round(7 * s);        // 상하 패딩
+    const padH = Math.round(16 * s);       // 좌우 패딩
+    const barH = fs + padV * 2 + 4;        // 버튼 높이 추정치
+    const gap = Math.round(6 * s);         // 버튼 간격
+
     pages.forEach((el, i) => {
       if (el === doc.body) return;
       el.setAttribute("data-lh-page", String(i + 1));
       const r = el.getBoundingClientRect();
-      const top = Math.max(2, r.top + win.scrollY - 30) + "px";
+      const docLeft = Math.round(r.left + win.scrollX);
+      const docRight = Math.round(r.right + win.scrollX);
+      // 컨트롤 바: 페이지 상단 위쪽 여백에 배치 (barH + 10px 여유)
+      const barTop = Math.max(2, Math.round(r.top + win.scrollY) - barH - Math.round(8 * s));
 
+      // 페이지 번호 라벨 (왼쪽)
       const label = doc.createElement("div");
       label.className = "__lh_ui __lh_pagelabel";
       label.textContent = `페이지 ${i + 1}`;
       label.title = "누르면 페이지가 선택돼요 (배경색 변경 가능)";
-      label.style.left = (r.left + win.scrollX) + "px";
-      label.style.top = top;
+      label.style.cssText = `left:${docLeft}px;top:${barTop}px;font-size:${fs}px;padding:${padV}px ${padH}px;`;
       label.addEventListener("click", () => selectElement(el));
       doc.body.appendChild(label);
 
-      // 캔바처럼 페이지마다 추가/복제/삭제 버튼
+      // 추가·복제·삭제 버튼 바 (오른쪽, 페이지 우측 끝에 우측 정렬)
       const bar = doc.createElement("div");
       bar.className = "__lh_ui __lh_pagebar";
-      bar.style.left = (r.right + win.scrollX) + "px";
-      bar.style.top = top;
-      bar.style.transform = "translateX(-100%)";
+      bar.style.cssText = `left:${docRight}px;top:${barTop}px;transform:translateX(-100%);gap:${gap}px;`;
       const mkPB = (txt, title, fn, danger) => {
         const b = doc.createElement("button");
         b.type = "button";
         b.textContent = txt;
         b.title = title;
         if (danger) b.className = "danger";
+        b.style.fontSize = fs + "px";
+        b.style.padding = `${padV}px ${padH}px`;
         b.addEventListener("click", fn);
         bar.appendChild(b);
       };
       mkPB("＋ 추가", "아래에 빈 페이지 추가", () => addPageAfter(el));
       mkPB("⧉ 복제", "이 페이지 복제", () => duplicatePage(el));
-      mkPB("🗑", "이 페이지 삭제", () => deletePage(el), true);
+      mkPB("🗑 삭제", "이 페이지 삭제", () => deletePage(el), true);
       doc.body.appendChild(bar);
     });
   }
