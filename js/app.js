@@ -636,12 +636,12 @@
       };
       mkPB("▲", "위로 이동", () => movePageUp(el), { iconOnly: true, disabled: isFirst });
       mkPB("▼", "아래로 이동", () => movePageDown(el), { iconOnly: true, disabled: isLast });
-      mkPB("＋ 추가", "아래에 빈 페이지 추가", () => addPageAfter(el));
-      mkPB("⧉ 복제", "이 페이지 복제", () => duplicatePage(el));
-      mkPB(locked ? "🔓 해제" : "🔒 잠금",
+      mkPB("＋", "아래에 빈 페이지 추가", () => addPageAfter(el), { iconOnly: true });
+      mkPB("⧉", "이 페이지 복제", () => duplicatePage(el), { iconOnly: true });
+      mkPB(locked ? "🔓" : "🔒",
         locked ? "페이지 잠금 풀기" : "페이지 잠금 (안의 요소 선택 방지)",
-        () => togglePageLock(el));
-      mkPB("🗑 삭제", "이 페이지 삭제", () => deletePage(el), { danger: true });
+        () => togglePageLock(el), { iconOnly: true });
+      mkPB("🗑", "이 페이지 삭제", () => deletePage(el), { danger: true, iconOnly: true });
       doc.body.appendChild(bar);
     });
   }
