@@ -437,6 +437,7 @@
       }
       [data-lh-lock] { cursor: default !important; }
       [data-lh-lock][data-lh-selected] { outline-style: dotted !important; }
+      [data-lh-page][data-lh-lock] { outline: 2px solid rgba(235,0,59,.5) !important; }
       .__lh_guide { position: fixed; background: #FF2E92; z-index: 2147483646; pointer-events: none; }
       .__lh_guide.v { width: 1.5px; }
       .__lh_guide.h { height: 1.5px; }
@@ -477,6 +478,8 @@
       }
       .__lh_pagebar button:hover { background: #246BEB; }
       .__lh_pagebar button.danger:hover { background: #EB003B; }
+      .__lh_pagebar button:disabled { opacity: .38; cursor: default; }
+      .__lh_pagebar button:disabled:hover { background: rgba(30,33,36,.82); }
     `;
     (doc.head || doc.documentElement).appendChild(st);
   }
@@ -552,14 +555,36 @@
     } catch (_) {}
   }
 
-  /** 편집 모드에서 페이지마다 점선 테두리 + 페이지 번호·추가·복제·삭제 컨트롤 표시 */
+  /** 편집 모드에서만 페이지 사이 간격을 넓혀 컨트롤 바가 겹치지 않게 함 (내보내기엔 미포함) */
+  let lastPageGapCss = "";
+  function setPageGapStyle(gapPx) {
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    let st = doc.getElementById("__lh_gap");
+    const css = gapPx > 0
+      ? `[data-lh-page]{margin-bottom:${gapPx}px !important;} body{padding-top:${gapPx}px !important;}`
+      : "";
+    if (css === lastPageGapCss && (st || !css)) return;
+    lastPageGapCss = css;
+    if (!css) { if (st) st.textContent = ""; return; }
+    if (!st) {
+      st = doc.createElement("style");
+      st.id = "__lh_gap";
+      st.className = "__lh_ui"; // getCleanHTML에서 자동 제거됨
+      (doc.head || doc.documentElement).appendChild(st);
+    }
+    st.textContent = css;
+  }
+
+  /** 편집 모드에서 페이지마다 점선 테두리 + 컨트롤(이동·추가·복제·잠금·삭제) 표시 */
   function refreshPageMarkers() {
     const doc = iframe.contentDocument;
     if (!doc || !doc.body) return;
     clearPageMarkers();
     pages = detectPages();
-    if (!editMode || !codeInput.value.trim()) return;
+    if (!editMode || !codeInput.value.trim()) { setPageGapStyle(0); return; }
     const win = iframe.contentWindow;
+    const pageEls = pages.filter((p) => p !== doc.body);
 
     // 현재 줌 배율의 역수로 버튼 크기를 보정 → 작은 배율에서도 항상 읽을 수 있는 크기
     const s = Math.max(1, Math.min(3.5, 1 / (currentScale || 1)));
@@ -568,43 +593,55 @@
     const padH = Math.round(16 * s);       // 좌우 패딩
     const barH = fs + padV * 2 + 4;        // 버튼 높이 추정치
     const gap = Math.round(6 * s);         // 버튼 간격
+    const topOff = Math.round(8 * s);      // 바와 페이지 상단 사이 간격
+    // 페이지 사이 간격: 바 높이 + 여백이 들어갈 만큼 확보 (겹침 방지). 페이지가 여러 개일 때만.
+    setPageGapStyle(pageEls.length ? barH + topOff + Math.round(18 * s) : 0);
 
-    pages.forEach((el, i) => {
-      if (el === doc.body) return;
+    pageEls.forEach((el, i) => {
       el.setAttribute("data-lh-page", String(i + 1));
+      const locked = isLockedEl(el);
+      const isFirst = i === 0;
+      const isLast = i === pageEls.length - 1;
       const r = el.getBoundingClientRect();
       const docLeft = Math.round(r.left + win.scrollX);
       const docRight = Math.round(r.right + win.scrollX);
-      // 컨트롤 바: 페이지 상단 위쪽 여백에 배치 (barH + 10px 여유)
-      const barTop = Math.max(2, Math.round(r.top + win.scrollY) - barH - Math.round(8 * s));
+      const barTop = Math.max(2, Math.round(r.top + win.scrollY) - barH - topOff);
 
-      // 페이지 번호 라벨 (왼쪽)
+      // 페이지 번호 라벨 (왼쪽) — 잠금 시 자물쇠 표시
       const label = doc.createElement("div");
       label.className = "__lh_ui __lh_pagelabel";
-      label.textContent = `페이지 ${i + 1}`;
-      label.title = "누르면 페이지가 선택돼요 (배경색 변경 가능)";
+      label.textContent = `페이지 ${i + 1}${locked ? " 🔒" : ""}`;
+      label.title = locked
+        ? "잠긴 페이지예요. 오른쪽 🔓 버튼으로 풀 수 있어요"
+        : "누르면 페이지가 선택돼요 (배경색 변경 가능)";
       label.style.cssText = `left:${docLeft}px;top:${barTop}px;font-size:${fs}px;padding:${padV}px ${padH}px;`;
       label.addEventListener("click", () => selectElement(el));
       doc.body.appendChild(label);
 
-      // 추가·복제·삭제 버튼 바 (오른쪽, 페이지 우측 끝에 우측 정렬)
+      // 컨트롤 바 (오른쪽, 페이지 우측 끝에 우측 정렬)
       const bar = doc.createElement("div");
       bar.className = "__lh_ui __lh_pagebar";
       bar.style.cssText = `left:${docRight}px;top:${barTop}px;transform:translateX(-100%);gap:${gap}px;`;
-      const mkPB = (txt, title, fn, danger) => {
+      const mkPB = (txt, title, fn, opts = {}) => {
         const b = doc.createElement("button");
         b.type = "button";
         b.textContent = txt;
         b.title = title;
-        if (danger) b.className = "danger";
+        if (opts.danger) b.className = "danger";
         b.style.fontSize = fs + "px";
-        b.style.padding = `${padV}px ${padH}px`;
-        b.addEventListener("click", fn);
+        b.style.padding = `${padV}px ${opts.iconOnly ? Math.round(padH * 0.62) : padH}px`;
+        if (opts.disabled) b.disabled = true;
+        else b.addEventListener("click", fn);
         bar.appendChild(b);
       };
-      mkPB("＋ 추가", "아래에 빈 페이지 추가", () => addPageAfter(el));
-      mkPB("⧉ 복제", "이 페이지 복제", () => duplicatePage(el));
-      mkPB("🗑 삭제", "이 페이지 삭제", () => deletePage(el), true);
+      mkPB("▲", "위로 이동", () => movePageUp(el), { iconOnly: true, disabled: isFirst });
+      mkPB("▼", "아래로 이동", () => movePageDown(el), { iconOnly: true, disabled: isLast });
+      mkPB("＋", "아래에 빈 페이지 추가", () => addPageAfter(el), { iconOnly: true });
+      mkPB("⧉", "이 페이지 복제", () => duplicatePage(el), { iconOnly: true });
+      mkPB(locked ? "🔓" : "🔒",
+        locked ? "페이지 잠금 풀기" : "페이지 잠금 (안의 요소 선택 방지)",
+        () => togglePageLock(el), { iconOnly: true });
+      mkPB("🗑", "이 페이지 삭제", () => deletePage(el), { danger: true, iconOnly: true });
       doc.body.appendChild(bar);
     });
   }
@@ -624,7 +661,7 @@
 
   function duplicatePage(page) {
     const cp = page.cloneNode(true);
-    ["data-lh-page", "data-lh-selected"].forEach((a) => cp.removeAttribute(a));
+    ["data-lh-page", "data-lh-selected", "data-lh-lock"].forEach((a) => cp.removeAttribute(a));
     cp.querySelectorAll("[data-lh-selected], [contenteditable]").forEach((x) => {
       x.removeAttribute("data-lh-selected");
       x.removeAttribute("contenteditable");
@@ -633,6 +670,57 @@
     syncFromPreview();
     applyZoom();
     toast("페이지를 복제했어요", "content_copy");
+  }
+
+  /* ---- 페이지 순서 이동 / 잠금 ---- */
+  function pageOrder() {
+    const doc = iframe.contentDocument;
+    return (pages.length ? pages : detectPages()).filter((p) => p !== doc.body);
+  }
+
+  function movePageUp(page) {
+    const pgs = pageOrder();
+    const i = pgs.indexOf(page);
+    if (i <= 0) { toast("이미 첫 페이지예요", "info", true); return; }
+    pgs[i - 1].before(page);
+    syncFromPreview();
+    applyZoom();
+    toast(`페이지를 위로 옮겼어요 (${i} ← ${i + 1})`, "arrow_upward");
+  }
+
+  function movePageDown(page) {
+    const pgs = pageOrder();
+    const i = pgs.indexOf(page);
+    if (i < 0 || i >= pgs.length - 1) { toast("이미 마지막 페이지예요", "info", true); return; }
+    pgs[i + 1].after(page);
+    syncFromPreview();
+    applyZoom();
+    toast(`페이지를 아래로 옮겼어요 (${i + 1} → ${i + 2})`, "arrow_downward");
+  }
+
+  function togglePageLock(page) {
+    const locking = !isLockedEl(page);
+    if (locking) {
+      page.setAttribute("data-lh-lock", "");
+      // 잠긴 페이지 안의 요소가 선택돼 있었다면 해제
+      if (selectedEl && selectedEl !== page && page.contains(selectedEl)) clearSelection();
+    } else {
+      page.removeAttribute("data-lh-lock");
+    }
+    syncFromPreview();
+    refreshPageMarkers();
+    toast(locking
+      ? "페이지를 잠갔어요. 안의 요소는 선택할 수 없어요"
+      : "페이지 잠금을 풀었어요", locking ? "lock" : "lock_open");
+  }
+
+  /** el 이 '잠긴 페이지' 안에 있으면 그 페이지를 반환 (요소 선택 차단용) */
+  function lockedPageOf(el) {
+    if (!el) return null;
+    for (const pg of pages) {
+      if (pg !== el && isLockedEl(pg) && pg.contains && pg.contains(el)) return pg;
+    }
+    return null;
   }
 
   function deletePage(page) {
@@ -933,6 +1021,7 @@
     let hits = [...root.querySelectorAll("*")].filter((el) => {
       if (!isEditableTarget(el) || isPageEl(el)) return false;
       if (el.closest(".__lh_ui")) return false;
+      if (lockedPageOf(el)) return false; // 잠긴 페이지 안 요소 제외
       const r = el.getBoundingClientRect();
       if (r.width < 6 || r.height < 6) return false;
       return r.right > rect.left && r.left < rect.right &&
@@ -982,6 +1071,11 @@
         endTextEdit();
       }
       const additive = e.ctrlKey || e.metaKey;
+      // 잠긴 페이지 안의 요소는 선택 불가
+      if (lockedPageOf(e.target)) {
+        toast("페이지가 잠겨 있어요. 페이지의 🔓 버튼으로 풀어 주세요", "lock", true);
+        return;
+      }
       // 페이지(배경)는 직접 선택하지 않음 → 빈 곳 클릭은 선택 해제. 페이지는 '페이지 N' 라벨로만 선택
       if (isEditableTarget(e.target) && !isPageEl(e.target)) {
         if (additive || e.target !== selectedEl || extraSel.length) {
@@ -995,6 +1089,10 @@
     doc.addEventListener("dblclick", (e) => {
       if (!editMode || !isEditableTarget(e.target)) return;
       e.preventDefault();
+      if (lockedPageOf(e.target)) {
+        toast("페이지가 잠겨 있어요. 페이지의 🔓 버튼으로 풀어 주세요", "lock", true);
+        return;
+      }
       selectElement(e.target);
       startTextEdit(e.target);
     });
