@@ -352,6 +352,28 @@
     </div>
   </div>
 
+  <!-- ===== 관리자 입장: 비밀번호 게이트 ===== -->
+  <div class="modal-backdrop" id="adminGate" hidden>
+    <div class="modal gate-modal" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+      <div class="gate-icon"><span class="material-symbols-outlined">lock</span></div>
+      <h2 id="gateTitle">관리자 모드</h2>
+      <p class="gate-desc">비밀번호를 입력하면 어느 기기에서나 내 디자인을 모두 볼 수 있어요.</p>
+      <form id="gateForm" autocomplete="off">
+        <input type="password" id="gatePassword" placeholder="비밀번호" autocomplete="current-password" spellcheck="false" />
+        <label class="gate-remember"><input type="checkbox" id="gateRemember" checked /><span>이 기기에서 비밀번호 기억하기</span></label>
+        <div class="gate-error" id="gateError" hidden></div>
+        <div class="gate-actions">
+          <button type="button" class="btn btn-tertiary" id="gateCancel">취소</button>
+          <button type="submit" class="btn btn-primary" id="gateSubmit"><span class="material-symbols-outlined">login</span>입장</button>
+        </div>
+      </form>
+      <p class="gate-note" id="gateLocalNote" hidden>
+        아직 클라우드 주소가 설정되지 않았어요. <code>js/config.js</code>에 주소를 넣으면
+        모든 기기에서 비밀번호만으로 접속됩니다. 지금은 이 기기에 저장된 디자인만 보여요.
+      </p>
+    </div>
+  </div>
+
   <!-- ===== 관리자 대시보드 (숨김: 로고 5번 클릭 또는 #admin) ===== -->
   <div class="admin-overlay" id="adminOverlay" hidden>
     <header class="admin-head">
@@ -401,16 +423,17 @@
         <button id="gasRestore" class="btn btn-tertiary btn-sm"><span class="material-symbols-outlined">cloud_download</span>클라우드에서 불러오기</button>
       </div>
       <details class="cloud-help">
-        <summary>처음 연결하는 방법 (1번만 하면 돼요)</summary>
+        <summary>처음 연결하는 방법 (1번만 하면 모든 기기에서 비밀번호만으로 접속)</summary>
         <ol>
           <li><strong>script.google.com</strong>에서 새 프로젝트를 만들고, 저장소의 <code>gas/Code.gs</code> 내용을 붙여넣어요.</li>
           <li>[프로젝트 설정 ⚙️] → [스크립트 속성]에 <strong>SECRET</strong> = 내가 정한 비밀번호를 추가해요.</li>
           <li>[배포] → [새 배포] → 유형 <strong>웹 앱</strong> → 액세스 <strong>모든 사용자</strong>로 배포해요.</li>
-          <li>발급된 <code>…/exec</code> 주소와 위 비밀번호를 칸에 넣으면 끝! (이 브라우저에 계속 기억돼요)</li>
+          <li>발급된 <code>…/exec</code> 주소를 저장소의 <code>js/config.js</code> 파일 <code>GAS_URL</code>에 붙여넣고 저장(커밋)해요.</li>
+          <li>끝! 이제 어느 기기에서든 관리자 모드에 들어가 <strong>비밀번호만</strong> 입력하면 모든 디자인이 보여요.</li>
           <li>코드를 고쳤다면 [배포 관리 → 수정 → 새 버전]으로 다시 배포해야 반영돼요.</li>
         </ol>
-        <p class="cloud-warn">🔒 비밀번호는 스크립트 속성(서버)에만 두고 코드에 넣지 않아요. 주소가 노출돼도
-        비밀번호를 모르면 백업을 읽거나 쓸 수 없어요.</p>
+        <p class="cloud-warn">🔒 주소(URL)는 공개돼도 안전해요 — 실제 잠금은 <strong>비밀번호(SECRET)</strong>이고
+        서버에서만 검증돼요. 비밀번호는 코드/저장소에 넣지 말고 앱에서만 입력하세요(이 브라우저에만 기억).</p>
       </details>
     </div>
 
@@ -498,6 +521,7 @@
     <p>HTML 파일을 여기에 놓아주세요</p>
   </div>
 
+  <script src="js/config.js"></script>
   <script src="js/templates.js"></script>
   <script src="js/app.js"></script>
 </body>

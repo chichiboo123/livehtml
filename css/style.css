@@ -1175,6 +1175,56 @@ body.mode-view .insert-fab { display: none; }
 .cloud-panel[hidden] { display: none; }
 .cloud-panel code { background: #fff; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 
+/* 관리자 비밀번호 게이트 */
+.gate-modal {
+  width: min(380px, 100%);
+  padding: 28px 26px 24px;
+  text-align: center;
+  gap: 0;
+}
+.gate-icon {
+  width: 56px; height: 56px; margin: 0 auto 14px;
+  display: grid; place-items: center;
+  background: var(--c-primary-soft); color: var(--c-primary);
+  border-radius: 50%;
+}
+.gate-icon .material-symbols-outlined { font-size: 30px; }
+.gate-modal h2 { margin: 0 0 6px; font-size: 20px; font-weight: 800; color: var(--c-text); }
+.gate-desc { margin: 0 0 18px; font-size: 13.5px; line-height: 1.55; color: var(--c-text-sub); }
+.gate-modal form { display: flex; flex-direction: column; gap: 12px; }
+.gate-modal input[type="password"] {
+  width: 100%; box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1.5px solid var(--c-border);
+  border-radius: 10px;
+  font-size: 15px;
+  text-align: center;
+  letter-spacing: .04em;
+}
+.gate-modal input[type="password"]:focus {
+  outline: none; border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px var(--c-primary-soft);
+}
+.gate-remember {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  font-size: 12.5px; color: var(--c-text-sub); cursor: pointer;
+}
+.gate-remember input { width: 15px; height: 15px; accent-color: var(--c-primary); cursor: pointer; }
+.gate-error {
+  font-size: 13px; font-weight: 700; color: var(--c-danger);
+  background: var(--c-danger-soft); border-radius: 8px; padding: 8px 10px;
+}
+.gate-error[hidden] { display: none; }
+.gate-actions { display: flex; gap: 8px; margin-top: 2px; }
+.gate-actions .btn { flex: 1; justify-content: center; }
+.gate-note {
+  margin: 16px 0 0; padding-top: 14px;
+  border-top: 1px solid var(--c-border);
+  font-size: 12px; line-height: 1.55; color: var(--c-text-sub); text-align: left;
+}
+.gate-note[hidden] { display: none; }
+.gate-note code { background: var(--c-bg-sub, #f1f3f5); padding: 1px 5px; border-radius: 4px; }
+
 /* 연결 상태 배너 */
 .cloud-status {
   display: flex; align-items: center; gap: 8px;
@@ -1200,6 +1250,7 @@ body.mode-view .insert-fab { display: none; }
 .cloud-dot[hidden] { display: none; }
 
 .cloud-field { display: flex; flex-direction: column; gap: 5px; }
+.cloud-field[hidden] { display: none; }
 .cloud-label { font-size: 12px; font-weight: 800; color: var(--c-text-sub); }
 .cloud-field input {
   height: 38px;
