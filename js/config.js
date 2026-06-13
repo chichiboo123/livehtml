@@ -22,5 +22,5 @@
  * ============================================================ */
 window.LIVEHTML_CONFIG = {
   // 여기에 Apps Script 웹 앱 주소를 붙여넣으세요 (비워 두면 기존처럼 기기마다 주소 입력)
-  GAS_URL: "",
+  GAS_URL: "https://script.google.com/macros/s/AKfycbwiTYcoSjsF9X04xaIldXDTtuaoP2Ap_VM5kQaXgB8RnoDkz9mvAmpUvaMa9nMMQHVx/exec",
 };
