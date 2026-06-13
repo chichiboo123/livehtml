@@ -6,15 +6,15 @@
   "use strict";
 
   /* ============================================================
-   * 환경설정 — 여기에 값을 미리 넣어두면 매번 입력하지 않아도 돼요.
-   * 예) GAS_URL: "https://script.google.com/macros/s/AKfy…/exec"
-   *     AUTO_SYNC: true  → 디자인을 저장할 때마다 자동으로 클라우드 백업
-   * (비워 두면 앱 안에서 직접 입력한 값이 브라우저에 저장돼 계속 기억됩니다.)
+   * 환경설정 — Apps Script 주소는 js/config.js 에서 한 번만 채워두면
+   * 모든 기기에서 비밀번호만으로 관리자 모드에 접속할 수 있어요.
+   * (비밀번호는 절대 코드에 넣지 않고 앱 실행 중에만 입력 → 외부 노출 방지)
    * ============================================================ */
+  const SITE = (typeof window !== "undefined" && window.LIVEHTML_CONFIG) || {};
   const CONFIG = {
-    GAS_URL: "",
-    GAS_TOKEN: "",   // 비밀번호. 보통은 비워 두고 앱에서 한 번만 입력하세요(공개 저장소 노출 방지)
-    AUTO_SYNC: false,
+    GAS_URL: SITE.GAS_URL || "",
+    GAS_TOKEN: "",   // 비밀번호는 코드/저장소에 넣지 않습니다. 앱에서 한 번만 입력하세요.
+    AUTO_SYNC: SITE.AUTO_SYNC || false,
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -2337,6 +2337,7 @@
       else if (!mcModal.hidden) closeMagic();
       else if (!templateModal.hidden) closeTemplates();
       else if (!helpModal.hidden) closeHelp();
+      else if (!adminGate.hidden) closeAdminGate();
       else if (!$("#adminOverlay").hidden) $("#adminClose").click();
       else clearSelection();
     } else if (e.key === "Delete" && selectedEl && !inField) {
@@ -2654,10 +2655,15 @@
     try { return (localStorage.getItem(GAS_KEY) || CONFIG.GAS_URL || "").trim(); }
     catch (_) { return (CONFIG.GAS_URL || "").trim(); }
   }
-  // 비밀번호(토큰): 절대 코드/저장소에 넣지 않고 이 브라우저에만 저장 → 외부 노출 방지
+  // 비밀번호(토큰): 절대 코드/저장소에 넣지 않음.
+  // 우선순위: 이 브라우저 저장값 → 이번 세션에만 쓰는 임시값 (기억 안 함 선택 시)
+  let gateSessionToken = "";
   function savedGasToken() {
-    try { return (localStorage.getItem(GAS_TOKEN_KEY) || CONFIG.GAS_TOKEN || "").trim(); }
-    catch (_) { return (CONFIG.GAS_TOKEN || "").trim(); }
+    try {
+      const stored = localStorage.getItem(GAS_TOKEN_KEY);
+      if (stored) return stored.trim();
+    } catch (_) {}
+    return (gateSessionToken || CONFIG.GAS_TOKEN || "").trim();
   }
   let autoSync = false;
   try {
@@ -2913,6 +2919,9 @@
     gasUrlInput.value = savedGasUrl();
     gasTokenInput.value = savedGasToken();
     $("#autoSyncChk").checked = autoSync;
+    // 주소가 config.js에 설정돼 있으면 관리자는 주소를 볼 필요가 없음 → 주소 칸 숨김
+    const urlField = gasUrlInput.closest(".cloud-field");
+    if (urlField) urlField.hidden = !!(SITE.GAS_URL || "").trim();
     setAdminUnlocked(true);
     renderDesigns();
     updateCloudStatus();
@@ -2933,7 +2942,14 @@
   $("#adminLock").addEventListener("click", () => {
     setAdminUnlocked(false);
     closeAdmin();
-    toast("관리자 버튼을 숨겼어요. 로고를 5번 클릭하면 다시 열려요", "lock");
+    // 클라우드를 쓰는 경우엔 기억된 비밀번호도 지워 다음 입장 때 다시 묻도록 (공용 기기 보호)
+    if (savedGasUrl()) {
+      try { localStorage.removeItem(GAS_TOKEN_KEY); } catch (_) {}
+      gateSessionToken = "";
+      toast("관리자 모드를 잠갔어요. 다시 들어오려면 로고 5번 클릭 후 비밀번호를 입력하세요", "lock");
+    } else {
+      toast("관리자 버튼을 숨겼어요. 로고를 5번 클릭하면 다시 열려요", "lock");
+    }
   });
   $("#adminNew").addEventListener("click", startNewDesign);
   $("#adminViewCard").addEventListener("click", () => {
@@ -3045,6 +3061,35 @@
 
   const scheduleAutoSync = debounce(() => doBackup(true), 2500);
 
+  /** 클라우드에서 디자인 목록을 가져온다. 결과: {ok, designs} | {ok:false, auth:false} | {ok:false, error} */
+  async function cloudRestore(token) {
+    const url = savedGasUrl();
+    if (!url) return { ok: false, error: "nourl" };
+    try {
+      const q = "action=restore&token=" + encodeURIComponent(token || "");
+      const res = await fetch(url + (url.includes("?") ? "&" : "?") + q);
+      const data = await res.json();
+      if (data && data.ok === false) {
+        return data.error === "auth" ? { ok: false, auth: false } : { ok: false, error: data.error };
+      }
+      if (!Array.isArray(data)) return { ok: false, error: "invalid" };
+      return { ok: true, designs: data };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  }
+
+  /** 클라우드 + 로컬 디자인을 id 기준으로 합치기 (최신 updatedAt 우선, 무엇도 잃지 않음) */
+  function mergeDesigns(cloud, local) {
+    const map = new Map();
+    [...(local || []), ...(cloud || [])].forEach((d) => {
+      if (!d || !d.id) return;
+      const ex = map.get(d.id);
+      if (!ex || (d.updatedAt || 0) >= (ex.updatedAt || 0)) map.set(d.id, d);
+    });
+    return [...map.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }
+
   $("#gasBackup").addEventListener("click", () => doBackup(false));
 
   $("#gasRestore").addEventListener("click", async () => {
@@ -3053,39 +3098,138 @@
     const btn = $("#gasRestore");
     btn.disabled = true;
     setCloudStatus("sync", "클라우드에서 불러오는 중…");
-    try {
-      const q = "action=restore&token=" + encodeURIComponent(savedGasToken());
-      const res = await fetch(url + (url.includes("?") ? "&" : "?") + q);
-      const data = await res.json();
-      if (data && data.ok === false) throw new Error(data.error || "restore failed");
-      if (!Array.isArray(data)) throw new Error("invalid data");
-      if (!data.length) {
-        updateCloudStatus();
-        toast("클라우드에 저장된 디자인이 아직 없어요. 먼저 [지금 바로 백업]을 해보세요", "info", true);
-        return;
-      }
-      if (designs.length &&
-          !confirm(`클라우드에 디자인 ${data.length}개가 있어요.\n이 기기의 ${designs.length}개를 클라우드 내용으로 바꿀까요?\n(이 기기에만 있는 디자인은 사라져요)`)) {
-        updateCloudStatus();
-        return;
-      }
-      designs = data;
-      try { localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs)); } catch (_) {}
-      setCurrentDesign(null);
-      renderDesigns();
-      updateCloudStatus();
-      toast(`클라우드에서 디자인 ${data.length}개를 가져왔어요`, "cloud_download");
-    } catch (err) {
-      console.error(err);
-      const isAuth = String(err.message) === "auth";
-      setCloudStatus("err", isAuth ? "비밀번호가 일치하지 않아요" : "불러오기 실패 — 주소·배포 설정을 확인하세요");
-      toast(isAuth
-        ? "비밀번호가 스크립트 속성의 SECRET과 달라요"
-        : "불러오기에 실패했어요. 주소와 배포 설정을 확인하세요", "error", true);
-    } finally {
-      btn.disabled = false;
+    const result = await cloudRestore(savedGasToken());
+    btn.disabled = false;
+    if (result.auth === false) {
+      setCloudStatus("err", "비밀번호가 일치하지 않아요");
+      toast("비밀번호가 스크립트 속성의 SECRET과 달라요", "error", true);
+      return;
     }
+    if (!result.ok) {
+      setCloudStatus("err", "불러오기 실패 — 주소·배포 설정을 확인하세요");
+      toast("불러오기에 실패했어요. 주소와 배포 설정을 확인하세요", "error", true);
+      return;
+    }
+    const data = result.designs;
+    if (!data.length && !designs.length) {
+      updateCloudStatus();
+      toast("클라우드에 저장된 디자인이 아직 없어요. 먼저 [지금 바로 백업]을 해보세요", "info", true);
+      return;
+    }
+    // 명시적 불러오기는 '클라우드 내용으로 교체'가 직관적 — 단 합쳐서 무엇도 잃지 않게 제안
+    if (designs.length &&
+        !confirm(`클라우드에 디자인 ${data.length}개가 있어요.\n이 기기 디자인과 합쳐서 모두 보이게 할까요?\n(같은 디자인은 더 최신 것으로 유지돼요)`)) {
+      updateCloudStatus();
+      return;
+    }
+    designs = mergeDesigns(data, designs);
+    try { localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs)); } catch (_) {}
+    setCurrentDesign(null);
+    renderDesigns();
+    updateCloudStatus();
+    toast(`클라우드 디자인을 합쳐 모두 ${designs.length}개가 됐어요`, "cloud_download");
   });
+
+  /* ============================================================
+   * 관리자 입장 — 비밀번호 게이트
+   * 클라우드 주소(config.js)가 있으면: 비밀번호 검증 + 자동 복원 후 입장
+   * 주소가 없으면: 이 기기에 저장된 디자인만 보는 로컬 모드로 입장
+   * ============================================================ */
+  const adminGate = $("#adminGate");
+  const gateForm = $("#gateForm");
+  const gatePassword = $("#gatePassword");
+  const gateError = $("#gateError");
+  const gateSubmit = $("#gateSubmit");
+
+  function showGateError(msg) {
+    gateError.textContent = msg;
+    gateError.hidden = false;
+  }
+
+  function openAdminGate() {
+    gatePassword.value = "";
+    gateError.hidden = true;
+    $("#gateRemember").checked = true;
+    $("#gateLocalNote").hidden = !!savedGasUrl();
+    adminGate.hidden = false;
+    setTimeout(() => gatePassword.focus(), 50);
+  }
+  function closeAdminGate() { adminGate.hidden = true; }
+
+  /** 관리자 입장 시도 — 적절한 흐름으로 분기 */
+  async function requestAdminAccess() {
+    const url = savedGasUrl();
+    // 클라우드 미설정 → 로컬 전용 입장 (기존 동작 유지)
+    if (!url) { openAdmin(); return; }
+    // 이미 비밀번호를 기억하고 있으면 게이트 없이 조용히 복원 후 입장
+    if (savedGasToken()) {
+      openAdmin();
+      autoRestoreOnEntry();
+      return;
+    }
+    openAdminGate();
+  }
+
+  /** 입장 직후 클라우드와 조용히 동기화 (병합 — 무엇도 잃지 않음) */
+  async function autoRestoreOnEntry() {
+    const tok = savedGasToken();
+    if (!savedGasUrl() || !tok) return;
+    setCloudStatus("sync", "클라우드에서 불러오는 중…");
+    const result = await cloudRestore(tok);
+    if (result.auth === false) {
+      // 비밀번호가 바뀌었음 → 기억된 비밀번호 폐기하고 다시 입력 요청
+      try { localStorage.removeItem(GAS_TOKEN_KEY); } catch (_) {}
+      gateSessionToken = "";
+      setCloudStatus("err", "비밀번호가 바뀐 것 같아요. 다시 입력해 주세요");
+      openAdminGate();
+      return;
+    }
+    if (!result.ok) { updateCloudStatus(); return; }
+    const before = designs.length;
+    designs = mergeDesigns(result.designs, designs);
+    try { localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs)); } catch (_) {}
+    renderDesigns();
+    updateCloudStatus();
+    if (designs.length !== before) {
+      toast(`클라우드에서 디자인을 불러왔어요 (총 ${designs.length}개)`, "cloud_done");
+    }
+  }
+
+  gateForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = gatePassword.value.trim();
+    if (!pw) { showGateError("비밀번호를 입력해 주세요"); return; }
+    const url = savedGasUrl();
+    if (!url) {  // 안전장치: 주소 없으면 그냥 로컬 입장
+      closeAdminGate();
+      openAdmin();
+      return;
+    }
+    gateSubmit.disabled = true;
+    gateError.hidden = true;
+    const prevLabel = gateSubmit.innerHTML;
+    gateSubmit.innerHTML = '<span class="material-symbols-outlined">hourglass_top</span>확인 중…';
+    const result = await cloudRestore(pw);
+    gateSubmit.disabled = false;
+    gateSubmit.innerHTML = prevLabel;
+    if (result.auth === false) { showGateError("비밀번호가 일치하지 않아요"); return; }
+    if (!result.ok) { showGateError("연결에 실패했어요. 잠시 후 다시 시도해 주세요"); return; }
+    // 성공 — 비밀번호 기억(선택) + 디자인 병합 + 입장
+    if ($("#gateRemember").checked) {
+      try { localStorage.setItem(GAS_TOKEN_KEY, pw); } catch (_) {}
+    } else {
+      gateSessionToken = pw; // 이 세션에서만 사용
+    }
+    designs = mergeDesigns(result.designs, designs);
+    try { localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs)); } catch (_) {}
+    setCurrentDesign(null);
+    closeAdminGate();
+    openAdmin();
+    toast(`디자인 ${designs.length}개를 불러왔어요`, "cloud_done");
+  });
+
+  $("#gateCancel").addEventListener("click", closeAdminGate);
+  adminGate.addEventListener("click", (e) => { if (e.target === adminGate) closeAdminGate(); });
 
   /* ---- 숨김 진입: 로고 5번 연속 클릭 / 주소 #admin ---- */
   let logoClicks = 0;
@@ -3096,10 +3240,10 @@
     logoTimer = setTimeout(() => { logoClicks = 0; }, 1800);
     if (logoClicks >= 5) {
       logoClicks = 0;
-      openAdmin();
+      requestAdminAccess();
     }
   });
-  if (location.hash === "#admin") setTimeout(openAdmin, 300);
+  if (location.hash === "#admin") setTimeout(requestAdminAccess, 300);
 
   /* ---------------- 초기화 ---------------- */
   updateStat();
