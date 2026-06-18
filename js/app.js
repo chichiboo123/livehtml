@@ -425,7 +425,7 @@
     const st = doc.createElement("style");
     st.id = "__lh_style";
     st.textContent = `
-      [data-lh-hover] { outline: 1.5px dashed rgba(36,107,235,.55) !important; outline-offset: 2px; cursor: default; }
+      [data-lh-hover] { outline: 1.5px dashed rgba(36,107,235,.55) !important; outline-offset: 2px; cursor: move; }
       [data-lh-selected] { outline: 2px solid #246BEB !important; outline-offset: 2px; cursor: move; touch-action: none; }
       [data-lh-selected][contenteditable="true"] { cursor: text; outline-style: dashed !important; }
       /* 편집 모드 전용: 페이지를 카드처럼 또렷이 분리 (내보내기에는 미포함) */
@@ -457,7 +457,11 @@
         position: fixed; z-index: 2147483647;
         background: #fff; border: 2px solid #246BEB; border-radius: 50%;
         box-shadow: 0 1px 4px rgba(0,0,0,.25); touch-action: none;
+        transition: transform .08s ease;
       }
+      /* 캔바처럼 작은 핸들도 쉽게 잡히도록 보이지 않는 여유 클릭 영역을 둠 */
+      .__lh_handle::before { content: ""; position: absolute; inset: -9px; border-radius: inherit; }
+      .__lh_handle:hover { transform: scale(1.18); }
       .__lh_handle.nw, .__lh_handle.se { cursor: nwse-resize; }
       .__lh_handle.ne, .__lh_handle.sw { cursor: nesw-resize; }
       .__lh_handle.n, .__lh_handle.s { cursor: ns-resize; border-radius: 999px; }
@@ -988,6 +992,59 @@
     });
   }
 
+  /* ---- 스마트 정렬: 페이지·이웃 요소의 가장자리/중심에 자석처럼 맞춤 ---- */
+  /** 드래그 시작 시 한 번만 스냅 기준선을 모은다 (페이지 + 같은 부모의 형제 요소) */
+  function collectSnapTargets(el) {
+    const doc = el.ownerDocument;
+    const page = (pages.find((p) => p.contains(el)) ||
+      [...doc.querySelectorAll("[data-lh-page]")].find((p) => p.contains(el)) ||
+      el.closest("[data-lh-page]"));
+    const xs = []; // 세로 가이드 후보 {v, span:[top,bottom]}
+    const ys = []; // 가로 가이드 후보 {v, span:[left,right]}
+    if (page) {
+      const pr = page.getBoundingClientRect();
+      xs.push({ v: pr.left, s: [pr.top, pr.bottom] }, { v: (pr.left + pr.right) / 2, s: [pr.top, pr.bottom] }, { v: pr.right, s: [pr.top, pr.bottom] });
+      ys.push({ v: pr.top, s: [pr.left, pr.right] }, { v: (pr.top + pr.bottom) / 2, s: [pr.left, pr.right] }, { v: pr.bottom, s: [pr.left, pr.right] });
+    }
+    const moving = selEls();
+    const parent = el.parentElement || doc.body;
+    [...parent.children].forEach((sib) => {
+      if (moving.includes(sib) || sib === el) return;
+      if (!isEditableTarget(sib) || isPageEl(sib)) return;
+      if (sib.closest(".__lh_ui") || String(sib.className).includes("__lh_")) return;
+      const r = sib.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return;
+      xs.push({ v: r.left, s: [r.top, r.bottom] }, { v: (r.left + r.right) / 2, s: [r.top, r.bottom] }, { v: r.right, s: [r.top, r.bottom] });
+      ys.push({ v: r.top, s: [r.left, r.right] }, { v: (r.top + r.bottom) / 2, s: [r.left, r.right] }, { v: r.bottom, s: [r.left, r.right] });
+    });
+    return { xs, ys };
+  }
+
+  /**
+   * 드래그된 요소 박스(left/center/right, top/middle/bottom)를 기준선에 맞춰 보정.
+   * 반환: { dx, dy, vx, vy } — 추가 보정량과 그려줄 세로/가로 가이드 좌표(없으면 null)
+   */
+  function computeSnap(box, snaps) {
+    const want = SNAP_DIST;
+    let dx = 0, vx = null, bestX = want;
+    let dy = 0, vy = null, bestY = want;
+    const edgesX = [box.left, (box.left + box.right) / 2, box.right];
+    const edgesY = [box.top, (box.top + box.bottom) / 2, box.bottom];
+    (snaps.xs || []).forEach((t) => {
+      edgesX.forEach((ex) => {
+        const d = Math.abs(t.v - ex);
+        if (d < bestX) { bestX = d; dx = t.v - ex; vx = t.v; }
+      });
+    });
+    (snaps.ys || []).forEach((t) => {
+      edgesY.forEach((ey) => {
+        const d = Math.abs(t.v - ey);
+        if (d < bestY) { bestY = d; dy = t.v - ey; vy = t.v; }
+      });
+    });
+    return { dx, dy, vx, vy };
+  }
+
   /* ---- 가운데 정렬 가이드선 ---- */
   function showGuide(doc, kind, rect, center) {
     let g = doc.querySelector(`.__lh_guide.${kind}`);
@@ -1146,8 +1203,20 @@
       // Ctrl/⌘ + 누르기는 드래그가 아니라 다중 선택 토글 → click 에서 처리
       if (e.ctrlKey || e.metaKey) return;
 
-      // 3) 선택된 요소(여러 개 가능) 드래그 이동
-      const grabbed = selEls().find((el) => el === e.target || el.contains(e.target));
+      // 3) 캔바처럼 "누르는 즉시 선택 + 그대로 끌어 이동" (한 동작으로)
+      //    이미 선택된 요소(여러 개)를 누르면 그 묶음을 함께 이동.
+      let grabbed = selEls().find((el) => el === e.target || el.contains(e.target));
+      if (!grabbed && !marquee && isEditableTarget(e.target) && !isPageEl(e.target)) {
+        if (lockedPageOf(e.target)) {
+          toast("페이지가 잠겨 있어요. 페이지의 🔓 버튼으로 풀어 주세요", "lock", true);
+          return;
+        }
+        // 누른 요소를 바로 선택 (잠긴 요소는 선택만, 이동은 막음)
+        closeInsertPanel();
+        selectElement(e.target);
+        if (isLockedEl(e.target)) return; // 바로 뒤 click 은 같은 요소라 무동작 → 억제 불필요
+        grabbed = e.target;
+      }
       if (grabbed && !isPageEl(grabbed)) {
         if (isLockedEl(grabbed)) { guardLocked(); return; }
         const movers = selEls().filter((el) => !isPageEl(el) && !isLockedEl(el));
@@ -1159,9 +1228,12 @@
           sx: e.clientX, sy: e.clientY,
           movers: movers.map((el) => ({ el, base: getTranslate(el) })),
           multi: movers.length > 1,
+          el: grabbed,
+          r0: er,
           c0x: er.left + er.width / 2, c0y: er.top + er.height / 2,
           pcx: pr.left + pr.width / 2, pcy: pr.top + pr.height / 2,
           pr,
+          snaps: collectSnapTargets(grabbed),
           moved: false,
         };
         try { grabbed.setPointerCapture(e.pointerId); } catch (_) {}
@@ -1279,21 +1351,24 @@
       if (!drag.moved && Math.hypot(dx, dy) < 3) return;
       drag.moved = true;
 
-      let snapX = false, snapY = false;
-      if (!drag.multi) {
-        // 단일 선택일 때만 가운데 정렬 스냅
-        const cx = drag.c0x + dx;
-        const cy = drag.c0y + dy;
-        if (Math.abs(cx - drag.pcx) < SNAP_DIST) { dx += drag.pcx - cx; snapX = true; }
-        if (Math.abs(cy - drag.pcy) < SNAP_DIST) { dy += drag.pcy - cy; snapY = true; }
+      // 스마트 정렬: 끌고 있는 박스의 가장자리·중심을 페이지/이웃 요소에 자석처럼 맞춤
+      let vx = null, vy = null;
+      if (!drag.multi && drag.snaps && !e.altKey) {
+        // Alt 를 누르면 스냅 일시 해제 (정밀 배치)
+        const box = {
+          left: drag.r0.left + dx, right: drag.r0.right + dx,
+          top: drag.r0.top + dy, bottom: drag.r0.bottom + dy,
+        };
+        const snap = computeSnap(box, drag.snaps);
+        dx += snap.dx; dy += snap.dy; vx = snap.vx; vy = snap.vy;
       }
 
       drag.movers.forEach((m) => setTranslate(m.el, m.base.x + dx, m.base.y + dy));
       updateHandles();
 
-      if (snapX) showGuide(doc, "v", drag.pr, drag.pcx);
+      if (vx !== null) showGuide(doc, "v", drag.pr, vx);
       else doc.querySelector(".__lh_guide.v")?.remove();
-      if (snapY) showGuide(doc, "h", drag.pr, drag.pcy);
+      if (vy !== null) showGuide(doc, "h", drag.pr, vy);
       else doc.querySelector(".__lh_guide.h")?.remove();
     });
 
@@ -2279,25 +2354,150 @@
   const notEditorUi = (n) =>
     !(n.className && typeof n.className === "string" && n.className.includes("__lh_"));
 
+  /* ---- 캡처 충실도 보조 ---- */
+  // "rgb()/rgba()" 문자열을 파싱 (a 미지정이면 1)
+  function parseRGBA(c) {
+    if (!c) return null;
+    if (c === "transparent") return { r: 0, g: 0, b: 0, a: 0 };
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    const p = m[1].split(",").map((s) => parseFloat(s.trim()));
+    return { r: p[0], g: p[1], b: p[2], a: p[3] === undefined ? 1 : p[3] };
+  }
+
   /**
-   * 페이지 요소 → 캔버스.
+   * 페이지가 화면에 실제로 보이는 배경색.
+   * 자기 배경이 불투명하면 그 색, 투명하면 부모(…→body→html)를 거슬러 올라가 찾고,
+   * 끝까지 투명하면 흰색. (강제로 흰색을 칠하던 기존 버그 → 아이보리가 흰색으로 바뀌던 문제 해결)
+   */
+  function effectiveBg(el) {
+    const win = el.ownerDocument.defaultView || window;
+    let node = el;
+    while (node && node.nodeType === 1) {
+      const c = parseRGBA(win.getComputedStyle(node).backgroundColor);
+      if (c && c.a > 0) {
+        return `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
+      }
+      node = node.parentElement;
+    }
+    return "#ffffff";
+  }
+
+  const SVGNS = "http://www.w3.org/2000/svg";
+
+  /**
+   * SVG 아이콘 보정.
+   * <use href="#id">가 가리키는 <symbol>은 보통 페이지 바깥(문서 상단)에 한 번만 정의돼 있어
+   * 페이지 하나만 캡처하면 참조가 끊겨 아이콘이 사라진다.
+   * 또 html-to-image는 캡처 시 currentColor를 '정의된 자리'의 색(보통 검정)으로 구워버려
+   * 색이 검정으로 바뀐다.
+   * → 캡처 직전, 각 <use>를 가리키는 도형으로 '그 자리에' 펼쳐 넣는다.
+   *   symbol 이면 viewBox를 가진 중첩 <svg>로 감싸 좌표계를 보존하고,
+   *   currentColor가 실제 색(상위 .ic 등의 color)으로 올바르게 풀리게 한다. 끝나면 원복.
+   */
+  function inlineUses(el) {
+    const doc = el.ownerDocument;
+    const restore = [];
+    el.querySelectorAll("use").forEach((use) => {
+      const href = use.getAttribute("href") || use.getAttribute("xlink:href");
+      if (!href || href.charAt(0) !== "#") return;
+      const ref = doc.getElementById(href.slice(1));
+      if (!ref) return;
+      let repl;
+      if (ref.tagName.toLowerCase() === "symbol") {
+        repl = doc.createElementNS(SVGNS, "svg");
+        const vb = ref.getAttribute("viewBox");
+        if (vb) repl.setAttribute("viewBox", vb);
+        const pa = ref.getAttribute("preserveAspectRatio");
+        if (pa) repl.setAttribute("preserveAspectRatio", pa);
+        repl.setAttribute("width", "100%");
+        repl.setAttribute("height", "100%");
+        repl.style.overflow = "visible";
+        [...ref.childNodes].forEach((n) => repl.appendChild(n.cloneNode(true)));
+      } else {
+        repl = ref.cloneNode(true);
+        repl.removeAttribute("id");
+      }
+      ["x", "y", "width", "height"].forEach((a) => {
+        if (use.hasAttribute(a)) repl.setAttribute(a, use.getAttribute(a));
+      });
+      if (use.parentNode) {
+        use.parentNode.replaceChild(repl, use);
+        restore.push({ parent: repl.parentNode, use, repl });
+      }
+    });
+    return restore;
+  }
+
+  /**
+   * url(#id)로 참조되는 그라데이션·필터·클립패스 등이 페이지 바깥 <defs>에 있으면
+   * 캡처 시 끊긴다 → 그런 정의가 든 외부 svg를 페이지 안에 복제해 둔다(끝나면 제거).
+   */
+  function injectDefs(el) {
+    const doc = el.ownerDocument;
+    const injected = [];
+    doc.querySelectorAll("svg").forEach((svg) => {
+      if (el.contains(svg)) return;
+      if (!svg.querySelector("linearGradient, radialGradient, filter, clipPath, pattern, mask")) return;
+      const clone = svg.cloneNode(true);
+      clone.setAttribute("data-lh-defs", "");
+      clone.removeAttribute("id");
+      clone.style.position = "absolute";
+      clone.style.width = "0";
+      clone.style.height = "0";
+      clone.style.overflow = "hidden";
+      clone.style.pointerEvents = "none";
+      el.insertBefore(clone, el.firstChild);
+      injected.push(clone);
+    });
+    return injected;
+  }
+
+  /**
+   * 페이지 요소 → 캔버스. (HTML로 보이는 그대로 PNG)
    * 1순위 html-to-image: SVG foreignObject 방식이라 브라우저가 그린 화면 그대로 캡처됨
    *   (html2canvas는 CSS를 자체 재구현해 그리는 방식이라 둥근 모서리+그림자 조합이 흰 상자로 깨짐)
    * 2순위 html2canvas: 위가 실패할 때만 (구형 브라우저 등)
    */
   async function snapshotPage(el, scale) {
+    const bg = effectiveBg(el);
+    const ownBg = parseRGBA(el.ownerDocument.defaultView.getComputedStyle(el).backgroundColor);
+    const hasOwnBg = !!(ownBg && ownBg.a > 0);
+    const inlined = inlineUses(el);   // <use> 아이콘을 제자리에 펼쳐 색·모양 보존
+    const injected = injectDefs(el);  // 외부 그라데이션/필터 정의 복제
     try {
-      const hti = await ensureHtmlToImage();
-      return await hti.toCanvas(el, {
-        pixelRatio: scale,
-        backgroundColor: "#ffffff",
-        filter: notEditorUi,
+      let canvas;
+      try {
+        const hti = await ensureHtmlToImage();
+        const opts = { pixelRatio: scale, filter: notEditorUi };
+        // html-to-image의 backgroundColor 옵션은 "뒤에 까는 색"이 아니라
+        // 복제 노드의 background-color를 '덮어써' 버린다 → 자기 배경이 있으면 지정하지 않는다.
+        if (!hasOwnBg) opts.backgroundColor = bg;
+        canvas = await hti.toCanvas(el, opts);
+      } catch (err) {
+        console.warn("html-to-image 실패 — html2canvas로 대체합니다", err);
+        const h2c = await ensureHtml2Canvas();
+        canvas = await h2c(el, {
+          scale, useCORS: true, allowTaint: false, logging: false,
+          backgroundColor: hasOwnBg ? null : bg,
+        });
+      }
+      // 투명한 영역은 화면에서 보이던 배경색으로 채워(=합성) 보이는 그대로 맞춘다.
+      const out = el.ownerDocument.createElement("canvas");
+      out.width = canvas.width;
+      out.height = canvas.height;
+      const ctx = out.getContext("2d");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(canvas, 0, 0);
+      return out;
+    } finally {
+      injected.forEach((c) => c.remove());
+      // <use> 원복 (펼쳐 넣었던 도형을 원래 <use>로 되돌림)
+      inlined.forEach(({ repl, use }) => {
+        if (repl.parentNode) repl.parentNode.replaceChild(use, repl);
       });
-    } catch (err) {
-      console.warn("html-to-image 실패 — html2canvas로 대체합니다", err);
     }
-    const h2c = await ensureHtml2Canvas();
-    return h2c(el, { scale, useCORS: true, allowTaint: false, logging: false });
   }
 
   const canvasToBlob = (canvas) =>
