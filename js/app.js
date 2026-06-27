@@ -547,6 +547,10 @@
         !String(el.className).includes("__lh_")
     );
     if (kids.length >= 2) return kids;
+    // 디자인이 단일 요소(카드 한 장 등)일 때는 그 요소를 페이지로 쓴다.
+    // body를 그대로 캡처하면 body의 padding·여백까지 함께 찍혀
+    // 결과물에 디자인이 작게 박히고 둘레에 빈 공간이 생긴다.
+    if (kids.length === 1) return kids;
     return [body];
   }
 
@@ -2512,7 +2516,8 @@
       return;
     }
     const mode = (document.querySelector("input[name='pngMode']:checked") || {}).value || "each";
-    // 내보내기 크기: 표준이면 긴 변이 1920px가 되도록 확대 (정사각 600px → 1920×1920)
+    // 내보내기 크기: '긴 변 N px'을 고른 경우, 디자인의 긴 변이 정확히 N px이 되도록
+    // 키우거나 줄인다. (정사각 600px → 1920, 또는 2400px → 1920)
     const targetSide = parseInt($("#pngSize").value, 10) || 0;
     dlPngBtn.disabled = true;
     clearPageMarkers(); // 점선·라벨이 이미지에 찍히지 않도록 제거
@@ -2522,7 +2527,9 @@
         dlPngLabel.textContent = `변환 중… (${i + 1}/${checked.length})`;
         const r = checked[i].getBoundingClientRect();
         const maxSide = Math.max(r.width, r.height) || 1;
-        const scale = targetSide ? Math.min(8, Math.max(1, targetSide / maxSide)) : 1;
+        // 긴 변이 targetSide가 되도록 배율 결정. 원본이 더 크면 줄이고(<1), 작으면 키운다(>1).
+        // 과도한 확대만 8배로 제한한다.
+        const scale = targetSide ? Math.min(8, targetSide / maxSide) : 1;
         canvases.push(await snapshotPage(checked[i], scale));
       }
 
