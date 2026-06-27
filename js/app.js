@@ -2544,6 +2544,25 @@
   const canvasToBlob = (canvas) =>
     new Promise((res) => canvas.toBlob(res, "image/png"));
 
+  // 캡처 결과의 긴 변을 정확히 targetSide(px)로 맞춘다.
+  // html-to-image·html2canvas의 서브픽셀 반올림 탓에 1920이 1919/1921로
+  // 어긋나는 일을 막는다. 8배 확대 상한에 걸린 경우엔 그대로 둔다.
+  function fitToLongSide(src, w, h, targetSide) {
+    const longSide = Math.max(w, h) || 1;
+    const k = Math.min(targetSide / longSide, 8);
+    const outW = Math.max(1, Math.round(w * k));
+    const outH = Math.max(1, Math.round(h * k));
+    if (src.width === outW && src.height === outH) return src;
+    const out = document.createElement("canvas");
+    out.width = outW;
+    out.height = outH;
+    const ctx = out.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(src, 0, 0, outW, outH);
+    return out;
+  }
+
   $("#dlPng").addEventListener("click", async () => {
     const checked = [...$("#pngPages").querySelectorAll("input:checked")]
       .map((c) => detectedPages[+c.dataset.idx])
@@ -2563,11 +2582,14 @@
       for (let i = 0; i < checked.length; i++) {
         dlPngLabel.textContent = `변환 중… (${i + 1}/${checked.length})`;
         const r = checked[i].getBoundingClientRect();
-        const maxSide = Math.max(r.width, r.height) || 1;
+        const w = r.width || 1, h = r.height || 1;
+        const maxSide = Math.max(w, h);
         // 긴 변이 targetSide가 되도록 배율 결정. 원본이 더 크면 줄이고(<1), 작으면 키운다(>1).
         // 과도한 확대만 8배로 제한한다.
         const scale = targetSide ? Math.min(8, targetSide / maxSide) : 1;
-        canvases.push(await snapshotPage(checked[i], scale));
+        const snap = await snapshotPage(checked[i], scale);
+        // 렌더러의 반올림 오차와 무관하게 긴 변을 정확히 targetSide로 보정한다.
+        canvases.push(targetSide ? fitToLongSide(snap, w, h, targetSide) : snap);
       }
 
       if (mode === "merge" && canvases.length > 1) {
