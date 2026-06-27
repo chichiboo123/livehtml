@@ -1,0 +1,47 @@
+name: Deploy to GitHub Pages
+
+# 정적 사이트(루트의 index.html · css · js · CNAME)를 GitHub Pages로 자동 배포한다.
+# 배포 소스가 "GitHub Actions"로 설정돼 있어야 동작한다.
+# (저장소 Settings → Pages → Build and deployment → Source: GitHub Actions)
+
+on:
+  # 운영 브랜치에 푸시되면 자동 배포
+  push:
+    branches:
+      - claude/live-html-editor-030e5d
+  # 필요할 때 Actions 탭에서 수동 실행도 가능
+  workflow_dispatch:
+
+# Pages 배포에 필요한 권한
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 동시에 한 번만 배포 (진행 중인 실행은 취소하지 않고 큐잉)
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # 빌드 과정이 없는 순수 정적 사이트이므로 저장소 루트를 그대로 올린다.
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
