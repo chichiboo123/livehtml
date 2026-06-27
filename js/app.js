@@ -1790,18 +1790,56 @@
     if (lastEffect !== "none") applyTextEffect(lastEffect);
   });
 
-  imgInput.addEventListener("change", () => {
+  /**
+   * 업로드한 이미지를 적당한 크기로 줄여 data URL로 돌려준다.
+   * 원본 사진(수 MB)을 그대로 base64로 심으면 저장 공간(localStorage ~5MB)을
+   * 금세 넘겨 "저장 공간이 가득 찼어요" 오류가 난다.
+   * 긴 변을 maxSide(기본 2048px — 1920px 카드뉴스/포스터에 충분)로 제한하고
+   * 사진은 JPEG로 다시 인코딩해 용량을 10~50배 줄인다.
+   * 투명도가 필요한 PNG/GIF/WebP는 PNG로, 벡터 SVG는 원본 그대로 둔다.
+   * 재인코딩 결과가 원본보다 크면 원본을 유지한다(손해 방지).
+   */
+  function prepareImageDataURL(file, maxSide = 2048, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error || new Error("read failed"));
+      reader.onload = () => {
+        const dataUrl = String(reader.result);
+        if (file.type === "image/svg+xml") return resolve(dataUrl); // 벡터는 작고 무손실
+        const img = new Image();
+        img.onerror = () => resolve(dataUrl); // 디코드 실패 시 원본 유지
+        img.onload = () => {
+          const w = img.naturalWidth || 0, h = img.naturalHeight || 0;
+          const scale = Math.min(1, maxSide / Math.max(w, h, 1));
+          // 이미 충분히 작으면 그대로 (불필요한 재인코딩 손실 방지)
+          if (scale === 1 && dataUrl.length < 700 * 1024) return resolve(dataUrl);
+          const cw = Math.max(1, Math.round(w * scale));
+          const ch = Math.max(1, Math.round(h * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = cw; canvas.height = ch;
+          canvas.getContext("2d").drawImage(img, 0, 0, cw, ch);
+          const keepAlpha = /png|gif|webp/i.test(file.type || "");
+          const out = canvas.toDataURL(keepAlpha ? "image/png" : "image/jpeg", quality);
+          resolve(out.length < dataUrl.length ? out : dataUrl);
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  imgInput.addEventListener("change", async () => {
     const file = imgInput.files[0];
     imgInput.value = "";
     if (!file || !selectedEl || selectedEl.tagName.toUpperCase() !== "IMG") return;
     if (guardLocked()) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      selectedEl.src = reader.result;
+    try {
+      selectedEl.src = await prepareImageDataURL(file);
       syncFromPreview();
       toast("이미지를 교체했어요", "image");
-    };
-    reader.readAsDataURL(file);
+    } catch (_) {
+      toast("이미지를 불러오지 못했어요", "error", true);
+    }
   });
 
   /* ============================================================
@@ -1994,28 +2032,27 @@
     // 이모지는 연속 삽입할 수 있도록 패널을 닫지 않음
   }
 
-  insertImgInput.addEventListener("change", () => {
+  insertImgInput.addEventListener("change", async () => {
     const file = insertImgInput.files[0];
     insertImgInput.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const doc = iframe.contentDocument;
-      const img = doc.createElement("img");
-      img.src = String(reader.result);
-      img.style.cssText = "position:absolute;height:auto;";
-      const apply = () => {
-        const target = insertTarget();
-        const tw = target.getBoundingClientRect().width || 400;
-        img.style.width = Math.round(Math.min(tw * 0.5, img.naturalWidth || tw * 0.5)) + "px";
-        insertIntoPage(img);
-        closeInsertPanel();
-        toast("이미지를 추가했어요. 모서리를 끌면 크기를 조절해요", "add_photo_alternate");
-      };
-      if (img.decode) img.decode().then(apply).catch(apply);
-      else { img.onload = apply; }
+    let dataUrl;
+    try { dataUrl = await prepareImageDataURL(file); }
+    catch (_) { toast("이미지를 불러오지 못했어요", "error", true); return; }
+    const doc = iframe.contentDocument;
+    const img = doc.createElement("img");
+    img.src = dataUrl;
+    img.style.cssText = "position:absolute;height:auto;";
+    const apply = () => {
+      const target = insertTarget();
+      const tw = target.getBoundingClientRect().width || 400;
+      img.style.width = Math.round(Math.min(tw * 0.5, img.naturalWidth || tw * 0.5)) + "px";
+      insertIntoPage(img);
+      closeInsertPanel();
+      toast("이미지를 추가했어요. 모서리를 끌면 크기를 조절해요", "add_photo_alternate");
     };
-    reader.readAsDataURL(file);
+    if (img.decode) img.decode().then(apply).catch(apply);
+    else { img.onload = apply; }
   });
 
   /* ============================================================
@@ -3025,8 +3062,18 @@
     try {
       localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs));
     } catch (_) {
-      toast("저장 공간이 가득 찼어요. 오래된 디자인을 지우거나 클라우드 백업을 사용하세요", "error", true);
+      // 이 기기 저장 공간(브라우저당 보통 5MB)을 넘었을 때.
+      // 클라우드(내 Google Drive)에는 사실상 용량 제한이 없으므로,
+      // 연결돼 있으면 로컬 실패와 상관없이 즉시 클라우드로 저장한다.
       ok = false;
+      if (savedGasUrl() && savedGasToken()) {
+        toast("이 기기 저장 공간을 넘어서 클라우드에 저장할게요…", "cloud_sync");
+        doBackup(false).then((done) => {
+          if (done) toast("클라우드에 저장했어요 — 이 기기 용량 제한과 무관해요", "cloud_done");
+        });
+        return ok; // 클라우드로 처리했으니 아래 자동백업 예약은 생략
+      }
+      toast("저장 공간이 가득 찼어요. 클라우드를 연결하면 용량 제한 없이 저장할 수 있어요", "error", true);
     }
     // 자동 백업이 켜져 있고 주소가 있으면 클라우드에도 반영
     if (autoSync && savedGasUrl()) scheduleAutoSync();
