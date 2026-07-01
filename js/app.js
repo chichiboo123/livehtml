@@ -44,6 +44,7 @@
   const effectPanel = $("#effectPanel");
   const fillPanel = $("#fillPanel");
   const stylePanel = $("#stylePanel");
+  const arrangePanel = $("#arrangePanel");
 
   const H2C_SRC = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
   const HTI_SRC = "https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js";
@@ -278,6 +279,7 @@
     closeInsertPanel();
     closeEffectPanel();
     closeFillPanel();
+    closeArrangePanel();
     loadFontPreviews();
     buildFontList(fontSearch.value);
     fontPanel.hidden = false;
@@ -308,6 +310,10 @@
     if (!stylePanel.hidden && !stylePanel.contains(e.target) &&
         !(e.target.closest && e.target.closest("[data-act='style']"))) {
       closeStylePanel();
+    }
+    if (!arrangePanel.hidden && !arrangePanel.contains(e.target) &&
+        !(e.target.closest && e.target.closest("[data-act='arrange']"))) {
+      closeArrangePanel();
     }
     // 작업창(미리보기) 바깥 — 코드창·헤더 등을 누르면 요소 선택 해제
     // (iframe 내부 클릭은 부모 document 로 전달되지 않으므로 캔버스 클릭은 영향 없음)
@@ -744,7 +750,7 @@
     page.remove();
     syncFromPreview();
     applyZoom();
-    toast("페이지를 삭제했어요", "delete");
+    toast("페이지를 삭제했어요 (Ctrl+Z로 복구)", "delete");
   }
 
   /* ============================================================
@@ -797,8 +803,24 @@
     closeEffectPanel();
     closeFillPanel();
     closeStylePanel();
+    closeArrangePanel();
     removeGuides();
     updateHandles();
+  }
+
+  /** 비개발자도 알 수 있는 요소 이름 (선택 칩에 표시) */
+  function friendlyName(el) {
+    const tag = el.tagName.toLowerCase();
+    if (tag === "img") return "이미지";
+    if (/^h[1-6]$/.test(tag)) return "제목";
+    if (tag === "p") return "본문";
+    if (["span", "strong", "em", "b", "i", "small", "label"].includes(tag)) return "텍스트";
+    if (tag === "a" || tag === "button") return "버튼·링크";
+    if (["ul", "ol", "li"].includes(tag)) return "목록";
+    if (tag === "svg" || (el.namespaceURI || "").includes("svg")) return "아이콘";
+    if (["table", "tr", "td", "th"].includes(tag)) return "표";
+    if (!el.children.length && el.textContent.trim()) return "텍스트";
+    return "상자";
   }
 
   /** 대표 선택 요소에 맞춰 도구 바 정보 갱신 */
@@ -811,7 +833,8 @@
       ? `${selEls().length}개 선택`
       : pageSel
         ? `페이지 ${el.getAttribute("data-lh-page") || ""}`.trim()
-        : el.tagName.toLowerCase();
+        : friendlyName(el);
+    selChip.title = multi ? "" : el.tagName.toLowerCase();
     $("#btnImage").hidden = multi || el.tagName.toUpperCase() !== "IMG";
     $("#btnLock").hidden = !multi && pageSel; // 페이지는 항상 고정이라 잠금 버튼 불필요
     $("#lockIcon").textContent = isLockedEl(el) ? "lock" : "lock_open";
@@ -1395,6 +1418,9 @@
     doc.addEventListener("pointerup", endPointer);
     doc.addEventListener("pointercancel", endPointer);
 
+    // Ctrl/⌘ + 휠로 미리보기 확대·축소 (iframe 안에서도 동작)
+    doc.addEventListener("wheel", handleZoomWheel, { passive: false });
+
     // contenteditable 입력 동기화
     doc.addEventListener("input", () => syncFromPreviewDebounced());
 
@@ -1406,6 +1432,25 @@
       }
       if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey)) && !editingEl) {
         e.preventDefault(); applyHistory(1); return;
+      }
+      // 요소 복사/잘라내기/붙여넣기/복제 + 저장 (텍스트 편집 중에는 브라우저 기본 동작 유지)
+      if (mod && !editingEl) {
+        const k = e.key.toLowerCase();
+        if (k === "c" && selectedEl && editMode) {
+          if (copySelectedElements()) {
+            e.preventDefault();
+            toast("요소를 복사했어요 — Ctrl+V로 붙여넣어요", "content_copy");
+          }
+          return;
+        }
+        if (k === "x" && selectedEl && editMode) { e.preventDefault(); cutSelectedElements(); return; }
+        if (k === "v" && editMode && pasteElements()) { e.preventDefault(); return; }
+        if (k === "d" && selectedEl && editMode) { e.preventDefault(); duplicateSelected(); return; }
+        if (k === "s") {
+          e.preventDefault();
+          if (codeInput.value.trim()) { adminUnlocked ? saveToCurrent() : downloadHTML(); }
+          return;
+        }
       }
       if (e.key === "Escape") {
         if (editingEl) endTextEdit();
@@ -1435,7 +1480,100 @@
     clearSelection();
     removable.forEach((el) => el.remove());
     syncFromPreview();
-    toast(removable.length > 1 ? `요소 ${removable.length}개를 삭제했어요` : "요소를 삭제했어요", "delete");
+    toast(removable.length > 1
+      ? `요소 ${removable.length}개를 삭제했어요 (Ctrl+Z로 복구)`
+      : "요소를 삭제했어요 (Ctrl+Z로 복구)", "delete");
+  }
+
+  /* ---- 요소 클립보드 (Ctrl+C / X / V) + 복제 (Ctrl+D) ---- */
+  let elemClipboard = []; // 복사한 요소들의 HTML
+  let pasteCount = 0;     // 붙여넣을 때마다 조금씩 어긋나게 배치
+
+  function cleanCloneHTML(el) {
+    const c = el.cloneNode(true);
+    ["data-lh-selected", "data-lh-hover", "data-lh-page", "contenteditable", "spellcheck"]
+      .forEach((a) => c.removeAttribute(a));
+    c.querySelectorAll("[data-lh-selected], [data-lh-hover], [contenteditable]").forEach((x) => {
+      x.removeAttribute("data-lh-selected");
+      x.removeAttribute("data-lh-hover");
+      x.removeAttribute("contenteditable");
+      x.removeAttribute("spellcheck");
+    });
+    return c.outerHTML;
+  }
+
+  function copySelectedElements() {
+    const list = selEls().filter((el) => !isPageEl(el));
+    if (!list.length) return false;
+    elemClipboard = list.map(cleanCloneHTML);
+    pasteCount = 0;
+    return true;
+  }
+
+  function cutSelectedElements() {
+    if (!copySelectedElements()) return false;
+    const removable = selEls().filter((el) => !isPageEl(el) && !isLockedEl(el));
+    if (!removable.length) { guardLocked(); return false; }
+    clearSelection();
+    removable.forEach((el) => el.remove());
+    syncFromPreview();
+    toast("요소를 잘라냈어요 — Ctrl+V로 붙여넣어요", "content_cut");
+    return true;
+  }
+
+  function pasteElements() {
+    if (!elemClipboard.length || !editMode) return false;
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body || !codeInput.value.trim()) return false;
+    const target = insertTarget();
+    if (iframe.contentWindow.getComputedStyle(target).position === "static") {
+      target.style.position = "relative";
+    }
+    pasteCount++;
+    const off = 16 * pasteCount;
+    const created = [];
+    elemClipboard.forEach((html) => {
+      try {
+        // createContextualFragment: <tr>·<li>처럼 문맥이 필요한 태그도 안전하게 복원
+        const range = doc.createRange();
+        range.selectNodeContents(target);
+        const frag = range.createContextualFragment(html);
+        const el = frag.firstElementChild;
+        if (!el) return;
+        target.appendChild(el);
+        const t = getTranslate(el);
+        setTranslate(el, t.x + off, t.y + off);
+        created.push(el);
+      } catch (_) {}
+    });
+    if (!created.length) return false;
+    clearSelection();
+    created.forEach((c, i) => selectElement(c, { additive: i > 0 }));
+    syncFromPreview();
+    toast(created.length > 1 ? `요소 ${created.length}개를 붙여넣었어요` : "요소를 붙여넣었어요", "content_paste");
+    return true;
+  }
+
+  function duplicateSelected() {
+    if (!selectedEl) return;
+    if (isPageEl(selectedEl)) { duplicatePage(selectedEl); return; }
+    if (guardLocked()) return;
+    const targets = selEls().filter((t) => !isPageEl(t));
+    const copies = [];
+    targets.forEach((t) => {
+      const copy = t.cloneNode(true);
+      copy.removeAttribute("data-lh-selected");
+      copy.removeAttribute("data-lh-page");
+      copy.removeAttribute("data-lh-lock");
+      t.after(copy);
+      const tr = getTranslate(copy);
+      setTranslate(copy, tr.x + 16, tr.y + 16);
+      copies.push(copy);
+    });
+    clearSelection();
+    copies.forEach((c, i) => selectElement(c, { additive: i > 0 }));
+    syncFromPreview();
+    toast(copies.length > 1 ? `요소 ${copies.length}개를 복제했어요` : "요소를 복제했어요", "content_copy");
   }
 
   editToolbar.addEventListener("click", (e) => {
@@ -1502,25 +1640,9 @@
         }
         return;
       }
-      case "duplicate": {
-        if (isPageEl(el)) { duplicatePage(el); return; }
-        const targets = selEls().filter((t) => !isPageEl(t));
-        const copies = [];
-        targets.forEach((t) => {
-          const copy = t.cloneNode(true);
-          copy.removeAttribute("data-lh-selected");
-          copy.removeAttribute("data-lh-page");
-          copy.removeAttribute("data-lh-lock");
-          t.after(copy);
-          const tr = getTranslate(copy);
-          setTranslate(copy, tr.x + 16, tr.y + 16);
-          copies.push(copy);
-        });
-        clearSelection();
-        copies.forEach((c, i) => selectElement(c, { additive: i > 0 }));
-        toast(copies.length > 1 ? `요소 ${copies.length}개를 복제했어요` : "요소를 복제했어요", "content_copy");
-        break;
-      }
+      case "duplicate":
+        duplicateSelected();
+        return;
       case "reset-pos":
         selEls().forEach((t) => { if (!isPageEl(t)) setXform(t, 0, 0, 0); });
         updateHandles();
@@ -1534,6 +1656,9 @@
         return;
       case "style":
         stylePanel.hidden ? openStylePanel() : closeStylePanel();
+        return;
+      case "arrange":
+        arrangePanel.hidden ? openArrangePanel() : closeArrangePanel();
         return;
       case "delete":
         deleteSelected();
@@ -1631,6 +1756,7 @@
     closeFontPanel();
     closeEffectPanel();
     closeStylePanel();
+    closeArrangePanel();
     closeInsertPanel();
     renderRecentSwatches();
     fillPanel.hidden = false;
@@ -1674,6 +1800,7 @@
     closeInsertPanel();
     closeFillPanel();
     closeStylePanel();
+    closeArrangePanel();
     effectPanel.hidden = false;
   }
   function closeEffectPanel() { effectPanel.hidden = true; }
@@ -1714,6 +1841,7 @@
     closeFontPanel();
     closeEffectPanel();
     closeFillPanel();
+    closeArrangePanel();
     closeInsertPanel();
     syncStylePanel(selectedEl);
     stylePanel.hidden = false;
@@ -1780,6 +1908,81 @@
     selEls().forEach((el) => { el.style.borderRadius = r + "px"; });
     $("#shapeRadiusVal").textContent = r + "px";
     syncFromPreviewDebounced();
+  });
+
+  /* ---- 정렬·순서 패널 — 페이지 기준 정렬 + 쌓임 순서(맨 앞/맨 뒤) ---- */
+  function openArrangePanel() {
+    if (!selectedEl) return;
+    closeFontPanel();
+    closeEffectPanel();
+    closeFillPanel();
+    closeStylePanel();
+    closeInsertPanel();
+    arrangePanel.hidden = false;
+  }
+  function closeArrangePanel() { arrangePanel.hidden = true; }
+
+  /** 선택 요소를 자신이 속한 페이지의 가장자리/가운데에 맞춰 이동 */
+  function alignSelected(kind) {
+    const movers = selEls().filter((el) => !isPageEl(el) && !isLockedEl(el));
+    if (!movers.length) { guardLocked(); return; }
+    movers.forEach((el) => {
+      const page = pages.find((p) => p !== el && p.contains(el)) || el.parentElement;
+      if (!page) return;
+      const pr = page.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      let dx = 0, dy = 0;
+      if (kind === "left") dx = pr.left - r.left;
+      else if (kind === "center-h") dx = (pr.left + pr.width / 2) - (r.left + r.width / 2);
+      else if (kind === "right") dx = pr.right - r.right;
+      else if (kind === "top") dy = pr.top - r.top;
+      else if (kind === "middle") dy = (pr.top + pr.height / 2) - (r.top + r.height / 2);
+      else if (kind === "bottom") dy = pr.bottom - r.bottom;
+      const t = getTranslate(el);
+      setTranslate(el, t.x + dx, t.y + dy);
+    });
+    updateHandles();
+    syncFromPreview();
+    toast("페이지에 맞춰 정렬했어요", "align_horizontal_center");
+  }
+
+  /** 쌓임 순서 변경 — 자유 배치 요소는 DOM 순서로, 그 외에는 z-index로 */
+  function reorderSelected(dir) {
+    const win = iframe.contentWindow;
+    const movers = selEls().filter((el) => !isPageEl(el) && !isLockedEl(el));
+    if (!movers.length) { guardLocked(); return; }
+    movers.forEach((el) => {
+      const parent = el.parentElement;
+      if (!parent) return;
+      const cs = win.getComputedStyle(el);
+      const abs = cs.position === "absolute" || cs.position === "fixed";
+      const sibs = [...parent.children].filter((s) =>
+        s !== el && isEditableTarget(s) && !(s.closest && s.closest(".__lh_ui")));
+      const zs = sibs.map((s) => parseInt(win.getComputedStyle(s).zIndex, 10)).filter((n) => !isNaN(n));
+      if (dir === "front") {
+        if (abs) parent.appendChild(el);
+        const maxZ = zs.length ? Math.max(...zs) : 0;
+        const own = parseInt(cs.zIndex, 10);
+        if (zs.length && (isNaN(own) || own <= maxZ)) {
+          if (cs.position === "static") el.style.position = "relative";
+          el.style.zIndex = String(maxZ + 1);
+        }
+      } else {
+        if (abs) parent.insertBefore(el, parent.firstChild);
+        el.style.removeProperty("z-index");
+      }
+    });
+    updateHandles();
+    syncFromPreview();
+    toast(dir === "front" ? "맨 앞으로 가져왔어요" : "맨 뒤로 보냈어요",
+      dir === "front" ? "flip_to_front" : "flip_to_back");
+  }
+
+  arrangePanel.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-align], [data-order]");
+    if (!btn || !selectedEl) return;
+    if (btn.dataset.align) alignSelected(btn.dataset.align);
+    else reorderSelected(btn.dataset.order);
   });
 
   effectPanel.addEventListener("click", (e) => {
@@ -1937,6 +2140,7 @@
       return;
     }
     closeFontPanel();
+    closeArrangePanel();
     buildEmojiGrid();
     insertPanel.hidden = false;
   }
@@ -2032,9 +2236,7 @@
     // 이모지는 연속 삽입할 수 있도록 패널을 닫지 않음
   }
 
-  insertImgInput.addEventListener("change", async () => {
-    const file = insertImgInput.files[0];
-    insertImgInput.value = "";
+  async function insertImageFile(file) {
     if (!file) return;
     let dataUrl;
     try { dataUrl = await prepareImageDataURL(file); }
@@ -2053,6 +2255,12 @@
     };
     if (img.decode) img.decode().then(apply).catch(apply);
     else { img.onload = apply; }
+  }
+
+  insertImgInput.addEventListener("change", () => {
+    const file = insertImgInput.files[0];
+    insertImgInput.value = "";
+    insertImageFile(file);
   });
 
   /* ============================================================
@@ -2074,6 +2282,41 @@
     zoomMode = zoomSelect.value;
     applyZoom();
   });
+
+  /* ---- Ctrl(⌘)+휠 확대·축소 — 캔바처럼 단계별 줌 ---- */
+  const ZOOM_STEPS = [25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300];
+
+  function setZoomPercent(p) {
+    zoomMode = String(p);
+    // 선택 목록에 없는 배율(예: 67%)은 임시 옵션으로 표시
+    if (![...zoomSelect.options].some((o) => o.value === zoomMode && !o.dataset.custom)) {
+      let custom = zoomSelect.querySelector("option[data-custom]");
+      if (!custom) {
+        custom = document.createElement("option");
+        custom.dataset.custom = "1";
+        zoomSelect.appendChild(custom);
+      }
+      custom.value = zoomMode;
+      custom.textContent = p + "%";
+    }
+    zoomSelect.value = zoomMode;
+    applyZoom();
+  }
+
+  function handleZoomWheel(e) {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const cur = Math.round((currentScale || 1) * 100);
+    let idx = ZOOM_STEPS.findIndex((s) => s >= cur);
+    if (idx < 0) idx = ZOOM_STEPS.length - 1;
+    if (e.deltaY < 0) {
+      if (ZOOM_STEPS[idx] <= cur) idx = Math.min(idx + 1, ZOOM_STEPS.length - 1);
+    } else {
+      idx = Math.max(0, idx - 1);
+    }
+    setZoomPercent(ZOOM_STEPS[idx]);
+  }
+  previewViewport.addEventListener("wheel", handleZoomWheel, { passive: false });
 
   /** 콘텐츠에 실제로 필요한 가로 폭.
    *  가운데 정렬된 고정폭 페이지가 왼쪽으로 넘치면 scrollWidth로는
@@ -2184,6 +2427,10 @@
       toast("HTML 파일만 불러올 수 있어요", "error", true);
       return;
     }
+    if (codeInput.value.trim() &&
+        !confirm(`'${file.name}' 파일을 불러올까요?\n지금 작업 중인 내용이 새 내용으로 바뀌어요. (Ctrl+Z로 되돌릴 수 있어요)`)) {
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       setCode(String(reader.result));
@@ -2204,6 +2451,10 @@
       const text = await navigator.clipboard.readText();
       if (!text.trim()) {
         toast("클립보드가 비어 있어요", "content_paste_off", true);
+        return;
+      }
+      if (codeInput.value.trim() && text.trim() !== codeInput.value.trim() &&
+          !confirm("지금 작업 중인 내용을 클립보드의 코드로 바꿀까요?\n(Ctrl+Z로 되돌릴 수 있어요)")) {
         return;
       }
       setCode(text);
@@ -2247,7 +2498,17 @@
     e.preventDefault();
     dragDepth = 0;
     $("#dropOverlay").hidden = true;
-    loadFile(e.dataTransfer.files[0]);
+    const file = e.dataTransfer.files[0];
+    // 이미지 파일은 편집 중인 페이지에 요소로 삽입 (캔바처럼)
+    if (file && /^image\//i.test(file.type || "")) {
+      if (!codeInput.value.trim()) {
+        toast("이미지를 넣으려면 먼저 HTML이나 템플릿을 불러와 주세요", "info", true);
+        return;
+      }
+      insertImageFile(file);
+      return;
+    }
+    loadFile(file);
   });
 
   /* ============================================================
@@ -2684,18 +2945,36 @@
 
   document.addEventListener("keydown", (e) => {
     const mod = e.ctrlKey || e.metaKey;
-    const inField = document.activeElement === codeInput ||
-      document.activeElement === fontSearch ||
-      document.activeElement === fontSizeInput;
+    // 어떤 입력창(검색·비밀번호·숫자 입력 등)에서든 타이핑이 요소 편집으로 새지 않도록
+    const ae = document.activeElement;
+    const inField = !!ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" ||
+      ae.tagName === "SELECT" || ae.isContentEditable);
     if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
       if (!inField) { e.preventDefault(); applyHistory(-1); }
     } else if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
       if (!inField) { e.preventDefault(); applyHistory(1); }
+    } else if (mod && ["c", "x", "v", "d"].includes(e.key.toLowerCase()) && !inField && editMode) {
+      const k = e.key.toLowerCase();
+      if (k === "c" && selectedEl) {
+        if (copySelectedElements()) {
+          e.preventDefault();
+          toast("요소를 복사했어요 — Ctrl+V로 붙여넣어요", "content_copy");
+        }
+      } else if (k === "x" && selectedEl) {
+        e.preventDefault();
+        cutSelectedElements();
+      } else if (k === "v") {
+        if (pasteElements()) e.preventDefault();
+      } else if (k === "d" && selectedEl) {
+        e.preventDefault();
+        duplicateSelected();
+      }
     } else if (e.key === "Escape") {
       if (!fontPanel.hidden) closeFontPanel();
       else if (!effectPanel.hidden) closeEffectPanel();
       else if (!fillPanel.hidden) closeFillPanel();
       else if (!stylePanel.hidden) closeStylePanel();
+      else if (!arrangePanel.hidden) closeArrangePanel();
       else if (!insertPanel.hidden) closeInsertPanel();
       else if (!downloadModal.hidden) closeDownloadModal();
       else if (!mcModal.hidden) closeMagic();
@@ -2704,7 +2983,8 @@
       else if (!adminGate.hidden) closeAdminGate();
       else if (!$("#adminOverlay").hidden) $("#adminClose").click();
       else clearSelection();
-    } else if (e.key === "Delete" && selectedEl && !inField) {
+    } else if ((e.key === "Delete" || e.key === "Backspace") && selectedEl && !inField) {
+      e.preventDefault();
       deleteSelected();
     } else if (e.key.startsWith("Arrow") && selectedEl && !inField && !editingEl) {
       e.preventDefault();

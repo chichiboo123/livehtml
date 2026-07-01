@@ -127,6 +127,7 @@
           <button class="tool-btn" data-act="align-left" title="왼쪽 정렬"><span class="material-symbols-outlined">format_align_left</span></button>
           <button class="tool-btn" data-act="align-center" title="가운데 정렬"><span class="material-symbols-outlined">format_align_center</span></button>
           <button class="tool-btn" data-act="align-right" title="오른쪽 정렬"><span class="material-symbols-outlined">format_align_right</span></button>
+          <button class="tool-btn" data-act="arrange" title="위치 정렬 · 쌓임 순서"><span class="material-symbols-outlined">align_horizontal_center</span></button>
         </div>
         <div class="tool-group">
           <button class="tool-btn" data-act="image" id="btnImage" title="이미지 교체" hidden><span class="material-symbols-outlined">image</span></button>
@@ -206,6 +207,24 @@
             <input type="range" id="shapeBorderRadius" min="0" max="200" step="1" value="0" />
             <span id="shapeRadiusVal" class="style-val">0px</span>
           </label>
+        </div>
+      </div>
+
+      <!-- 정렬·순서 패널 -->
+      <div class="font-panel arrange-panel" id="arrangePanel" hidden>
+        <div class="font-group-title" style="padding-top:12px">페이지에 맞춰 정렬</div>
+        <div class="arrange-grid">
+          <button class="arr-btn" data-align="left"><span class="material-symbols-outlined">align_horizontal_left</span>왼쪽</button>
+          <button class="arr-btn" data-align="center-h"><span class="material-symbols-outlined">align_horizontal_center</span>가운데</button>
+          <button class="arr-btn" data-align="right"><span class="material-symbols-outlined">align_horizontal_right</span>오른쪽</button>
+          <button class="arr-btn" data-align="top"><span class="material-symbols-outlined">align_vertical_top</span>위</button>
+          <button class="arr-btn" data-align="middle"><span class="material-symbols-outlined">align_vertical_center</span>중간</button>
+          <button class="arr-btn" data-align="bottom"><span class="material-symbols-outlined">align_vertical_bottom</span>아래</button>
+        </div>
+        <div class="font-group-title">쌓임 순서</div>
+        <div class="arrange-grid two">
+          <button class="arr-btn" data-order="front"><span class="material-symbols-outlined">flip_to_front</span>맨 앞으로</button>
+          <button class="arr-btn" data-order="back"><span class="material-symbols-outlined">flip_to_back</span>맨 뒤로</button>
         </div>
       </div>
 
@@ -508,6 +527,21 @@
           <span class="help-num">4</span>
           <div><strong>💾 저장하고 공유하기</strong><p>위의 [저장 · 공유] 버튼에서 HTML 파일이나 PNG 이미지로 받아요.</p></div>
         </div>
+        <div class="help-shortcuts">
+          <strong>⌨️ 단축키 모음</strong>
+          <div class="sc-grid">
+            <span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd></span><span>실행 취소 / 다시 실행</span>
+            <span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></span><span>요소 복사 / 잘라내기 / 붙여넣기</span>
+            <span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>D</kbd></span><span>요소 복제</span>
+            <span class="sc-keys"><kbd>Delete</kbd> · <kbd>Backspace</kbd></span><span>선택한 요소 삭제</span>
+            <span class="sc-keys">방향키 (+<kbd>Shift</kbd>)</span><span>1px씩(10px씩) 미세 이동</span>
+            <span class="sc-keys"><kbd>Ctrl</kbd>+클릭</span><span>여러 요소 함께 선택</span>
+            <span class="sc-keys"><kbd>Alt</kbd>+드래그</span><span>자석 정렬 없이 자유롭게 이동</span>
+            <span class="sc-keys"><kbd>Ctrl</kbd>+휠</span><span>미리보기 확대 · 축소</span>
+            <span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span>저장 (HTML 파일 / 내 디자인)</span>
+            <span class="sc-keys"><kbd>Esc</kbd></span><span>선택 해제 · 패널 닫기</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -518,7 +552,7 @@
   <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
   <div class="drop-overlay" id="dropOverlay" hidden>
     <span class="material-symbols-outlined">place_item</span>
-    <p>HTML 파일을 여기에 놓아주세요</p>
+    <p>HTML 파일이나 이미지를 여기에 놓아주세요</p>
   </div>
 
   <script src="js/config.js"></script>
