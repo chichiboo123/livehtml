@@ -306,15 +306,21 @@ body {
 body.has-content .preview-canvas { min-width: 40px; min-height: 40px; }
 body:not(.has-content) .preview-canvas { display: none; }
 
-/* ---- 편집 도구 바 ---- */
+/* ---- 편집 도구 바 ----
+   미리보기 위에 겹쳐 띄운다(오버레이). 문서 흐름에 두면 선택할 때마다
+   미리보기 전체가 아래로 밀려, 드래그 시작 순간 요소가 점프하는 버그가 생긴다. */
 .edit-toolbar {
-  flex: none;
+  position: absolute;
+  top: 48px; /* .pane-toolbar 높이 */
+  left: 0; right: 0;
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
   background: var(--c-surface);
   border-bottom: 1px solid var(--c-border-light);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .07);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -982,6 +988,7 @@ body.mode-view .insert-fab { display: none; }
 .png-page:has(input:checked) { border-color: var(--c-primary); background: var(--c-primary-soft); }
 .png-page input { width: 18px; height: 18px; accent-color: var(--c-primary); cursor: pointer; }
 .png-page .dim { margin-left: auto; font-size: 12px; color: var(--c-text-sub); font-weight: 500; }
+.png-page .png-out { color: var(--c-primary); font-weight: 700; }
 .png-empty { font-size: 14px; color: var(--c-text-sub); text-align: center; padding: 12px; }
 
 /* ---- PNG 크기 선택 ---- */
