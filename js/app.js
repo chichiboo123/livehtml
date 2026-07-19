@@ -264,7 +264,7 @@
   function applyFont(font) {
     if (!selectedEl || guardLocked()) return;
     if (font.family) ensureFontLink(iframe.contentDocument, font);
-    selEls().forEach((el) => {
+    styleTargets().forEach((el) => {
       if (!font.family) el.style.removeProperty("font-family");
       else el.style.fontFamily = `'${font.family}', ${font.fallback}`;
     });
@@ -790,6 +790,11 @@
     return list;
   }
 
+  /** 스타일을 적용할 대상 — 다중 선택에 잠긴 요소가 섞여 있으면 제외 */
+  function styleTargets() {
+    return selEls().filter((el) => !isLockedEl(el));
+  }
+
   function clearSelection() {
     if (editingEl) endTextEdit(false);
     try {
@@ -955,6 +960,37 @@
 
   function setTranslate(el, x, y) {
     setXform(el, x, y, getXform(el).r);
+  }
+
+  /**
+   * 조상 요소들의 CSS transform이 만드는 누적 배율.
+   * 매직 체인지(크기 변환) 뒤에는 페이지 안 내용이 scale()된 래퍼 속에 있어서,
+   * 화면에서 잰 이동량(px)을 그대로 translate에 넣으면 배율만큼 과하게 움직인다.
+   * → 드래그·크기 조절·미세 이동 때 이 배율로 나눠 화면과 1:1로 맞춘다.
+   */
+  function cumulativeScale(el) {
+    let sx = 1, sy = 1;
+    const win = el.ownerDocument.defaultView || window;
+    let node = el.parentElement;
+    while (node && node.nodeType === 1) {
+      const t = win.getComputedStyle(node).transform;
+      if (t && t !== "none") {
+        if (t.startsWith("matrix3d(")) {
+          const p = t.slice(9, -1).split(",").map(parseFloat);
+          sx *= Math.hypot(p[0], p[1], p[2]) || 1;
+          sy *= Math.hypot(p[4], p[5], p[6]) || 1;
+        } else {
+          const m = t.match(/matrix\(([^)]+)\)/);
+          if (m) {
+            const p = m[1].split(",").map(parseFloat);
+            sx *= Math.hypot(p[0], p[1]) || 1;
+            sy *= Math.hypot(p[2], p[3]) || 1;
+          }
+        }
+      }
+      node = node.parentElement;
+    }
+    return { x: sx || 1, y: sy || 1 };
   }
 
   function nudgeSelected(dx, dy) {
@@ -1208,11 +1244,14 @@
         const cs = doc.defaultView.getComputedStyle(selectedEl);
         const isImg = selectedEl.tagName.toUpperCase() === "IMG";
         const textOnly = !isImg && !selectedEl.children.length && !!selectedEl.textContent.trim();
+        const sc = cumulativeScale(selectedEl);
         resize = {
           kind: dir.length === 2 ? "corner" : "edge",
           corner: dir, dir,
           sx: e.clientX, sy: e.clientY,
-          w: er.width, h: er.height,
+          // 크기·이동량은 요소의 로컬 px 단위로 계산 (조상 scale 보정 → 화면과 1:1)
+          w: er.width / sc.x, h: er.height / sc.y,
+          sc,
           fs: parseFloat(cs.fontSize) || 16,
           t: getTranslate(selectedEl),
           isImg, textOnly,
@@ -1253,7 +1292,9 @@
         const pr = parent.getBoundingClientRect();
         drag = {
           sx: e.clientX, sy: e.clientY,
-          movers: movers.map((el) => ({ el, base: getTranslate(el) })),
+          rebase: true, // 첫 move에서 레이아웃 변동만큼 기준점 보정
+          ifr: iframe.getBoundingClientRect(),
+          movers: movers.map((el) => ({ el, base: getTranslate(el), sc: cumulativeScale(el) })),
           multi: movers.length > 1,
           el: grabbed,
           r0: er,
@@ -1304,7 +1345,7 @@
         const d = resize.dir;
         if (d === "e" || d === "w") {
           const fx = d === "e" ? 1 : -1;
-          const newW = Math.max(20, resize.w + (e.clientX - resize.sx) * fx);
+          const newW = Math.max(20, resize.w + (e.clientX - resize.sx) * fx / resize.sc.x);
           selectedEl.style.width = Math.round(newW) + "px";
           if (resize.isImg) selectedEl.style.height = "auto";
           if (d === "w") {
@@ -1313,7 +1354,7 @@
           }
         } else {
           const fy = d === "s" ? 1 : -1;
-          const newH = Math.max(20, resize.h + (e.clientY - resize.sy) * fy);
+          const newH = Math.max(20, resize.h + (e.clientY - resize.sy) * fy / resize.sc.y);
           selectedEl.style.height = Math.round(newH) + "px";
           if (d === "n") {
             const y = resize.t.y + (resize.h - newH);
@@ -1328,8 +1369,8 @@
       if (resize && selectedEl) {
         const fx = resize.corner.includes("e") ? 1 : -1;
         const fy = resize.corner.includes("s") ? 1 : -1;
-        const newW = Math.max(20, resize.w + (e.clientX - resize.sx) * fx);
-        let newH = Math.max(20, resize.h + (e.clientY - resize.sy) * fy);
+        const newW = Math.max(20, resize.w + (e.clientX - resize.sx) * fx / resize.sc.x);
+        let newH = Math.max(20, resize.h + (e.clientY - resize.sy) * fy / resize.sc.y);
         if (resize.textOnly) {
           // 텍스트는 캔바처럼 모서리 조절 시 글자 크기를 비율로 변경
           selectedEl.style.fontSize = Math.max(6, Math.round(resize.fs * (newW / resize.w))) + "px";
@@ -1373,6 +1414,15 @@
 
       // 이동 + 가운데 정렬 스냅
       if (!drag) return;
+      // 선택 직후 도구 바 표시 등으로 레이아웃이 바뀌었으면 그만큼만 기준점 보정
+      // (요소가 갑자기 점프하는 것 방지 — 이동량은 그대로 보존)
+      if (drag.rebase) {
+        drag.rebase = false;
+        const r2 = iframe.getBoundingClientRect();
+        const os = currentScale || 1;
+        drag.sx += (drag.ifr.left - r2.left) / os;
+        drag.sy += (drag.ifr.top - r2.top) / os;
+      }
       let dx = e.clientX - drag.sx;
       let dy = e.clientY - drag.sy;
       if (!drag.moved && Math.hypot(dx, dy) < 3) return;
@@ -1390,7 +1440,8 @@
         dx += snap.dx; dy += snap.dy; vx = snap.vx; vy = snap.vy;
       }
 
-      drag.movers.forEach((m) => setTranslate(m.el, m.base.x + dx, m.base.y + dy));
+      // 화면에서 잰 이동량(dx,dy)을 요소의 누적 배율로 나눠 화면과 1:1로 이동
+      drag.movers.forEach((m) => setTranslate(m.el, m.base.x + dx / m.sc.x, m.base.y + dy / m.sc.y));
       updateHandles();
 
       if (vx !== null) showGuide(doc, "v", drag.pr, vx);
@@ -1607,7 +1658,7 @@
         return;
       case "font-dec":
       case "font-inc": {
-        selEls().forEach((t) => {
+        styleTargets().forEach((t) => {
           const cur = parseFloat(win.getComputedStyle(t).fontSize) || 16;
           t.style.fontSize = Math.max(6, cur + (act === "font-inc" ? 2 : -2)) + "px";
         });
@@ -1617,17 +1668,17 @@
       case "bold": {
         const w = win.getComputedStyle(el).fontWeight;
         const next = (parseInt(w, 10) >= 600 || w === "bold") ? "400" : "700";
-        selEls().forEach((t) => { t.style.fontWeight = next; });
+        styleTargets().forEach((t) => { t.style.fontWeight = next; });
         break;
       }
       case "italic": {
         const next = win.getComputedStyle(el).fontStyle === "italic" ? "normal" : "italic";
-        selEls().forEach((t) => { t.style.fontStyle = next; });
+        styleTargets().forEach((t) => { t.style.fontStyle = next; });
         break;
       }
-      case "align-left": selEls().forEach((t) => { t.style.textAlign = "left"; }); break;
-      case "align-center": selEls().forEach((t) => { t.style.textAlign = "center"; }); break;
-      case "align-right": selEls().forEach((t) => { t.style.textAlign = "right"; }); break;
+      case "align-left": styleTargets().forEach((t) => { t.style.textAlign = "left"; }); break;
+      case "align-center": styleTargets().forEach((t) => { t.style.textAlign = "center"; }); break;
+      case "align-right": styleTargets().forEach((t) => { t.style.textAlign = "right"; }); break;
       case "image":
         imgInput.click();
         return;
@@ -1644,7 +1695,7 @@
         duplicateSelected();
         return;
       case "reset-pos":
-        selEls().forEach((t) => { if (!isPageEl(t)) setXform(t, 0, 0, 0); });
+        styleTargets().forEach((t) => { if (!isPageEl(t)) setXform(t, 0, 0, 0); });
         updateHandles();
         toast("위치와 회전을 되돌렸어요", "restart_alt");
         break;
@@ -1674,13 +1725,13 @@
     if (!selectedEl || guardLocked()) return;
     const size = Math.min(400, Math.max(6, parseInt(fontSizeInput.value, 10) || 16));
     fontSizeInput.value = size;
-    selEls().forEach((el) => { el.style.fontSize = size + "px"; });
+    styleTargets().forEach((el) => { el.style.fontSize = size + "px"; });
     syncFromPreview();
   });
 
   $("#colorPicker").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
-    selEls().forEach((el) => { el.style.color = e.target.value; });
+    styleTargets().forEach((el) => { el.style.color = e.target.value; });
     syncFromPreviewDebounced();
   });
   // 글자 색으로 고른 색도 '최근 사용한 색'에 모아 배경색에서 재사용
@@ -1733,7 +1784,7 @@
     none.title = "배경 없음 (원래대로)";
     none.addEventListener("click", () => {
       if (!selectedEl || guardLocked()) return;
-      selEls().forEach((el) => {
+      styleTargets().forEach((el) => {
         el.style.removeProperty("background");
         el.style.removeProperty("background-color");
       });
@@ -1746,7 +1797,7 @@
   /** 배경색 적용 — 페이지·도형·텍스트 상자 모두 (그라데이션도 단색으로 교체) */
   function applyFill(color, { record = true } = {}) {
     if (!selectedEl || guardLocked()) return;
-    selEls().forEach((el) => { el.style.background = color; });
+    styleTargets().forEach((el) => { el.style.background = color; });
     syncFromPreviewDebounced();
     if (record) recordRecentColor(color);
   }
@@ -1787,7 +1838,7 @@
     if (!selectedEl || guardLocked()) return;
     lastEffect = type;
     const value = TEXT_EFFECTS[type]($("#effectColor").value);
-    selEls().forEach((el) => {
+    styleTargets().forEach((el) => {
       if (value) el.style.textShadow = value;
       else el.style.removeProperty("text-shadow");
     });
@@ -1850,7 +1901,7 @@
 
   $("#shapeFill").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
-    selEls().forEach((el) => { el.style.backgroundColor = e.target.value; });
+    styleTargets().forEach((el) => { el.style.backgroundColor = e.target.value; });
     recordRecentColor(e.target.value);
     syncFromPreviewDebounced();
   });
@@ -1858,7 +1909,7 @@
   $("#shapeOpacity").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
     const v = parseInt(e.target.value, 10);
-    selEls().forEach((el) => { el.style.opacity = v / 100; });
+    styleTargets().forEach((el) => { el.style.opacity = v / 100; });
     $("#shapeOpacityVal").textContent = v + "%";
     syncFromPreviewDebounced();
   });
@@ -1867,7 +1918,7 @@
     btn.addEventListener("click", () => {
       if (!selectedEl || guardLocked()) return;
       const style = btn.dataset.bs;
-      selEls().forEach((el) => {
+      styleTargets().forEach((el) => {
         if (style === "none") {
           el.style.border = "none";
         } else {
@@ -1885,14 +1936,14 @@
 
   $("#shapeBorderColor").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
-    selEls().forEach((el) => { el.style.borderColor = e.target.value; });
+    styleTargets().forEach((el) => { el.style.borderColor = e.target.value; });
     syncFromPreviewDebounced();
   });
 
   $("#shapeBorderWidth").addEventListener("change", (e) => {
     if (!selectedEl || guardLocked()) return;
     const w = Math.max(0, parseInt(e.target.value, 10) || 0);
-    selEls().forEach((el) => {
+    styleTargets().forEach((el) => {
       el.style.borderWidth = w + "px";
       if (w > 0 && (!el.style.borderStyle || el.style.borderStyle === "none")) {
         el.style.borderStyle = "solid";
@@ -1905,7 +1956,7 @@
   $("#shapeBorderRadius").addEventListener("input", (e) => {
     if (!selectedEl || guardLocked()) return;
     const r = parseInt(e.target.value, 10);
-    selEls().forEach((el) => { el.style.borderRadius = r + "px"; });
+    styleTargets().forEach((el) => { el.style.borderRadius = r + "px"; });
     $("#shapeRadiusVal").textContent = r + "px";
     syncFromPreviewDebounced();
   });
@@ -1939,7 +1990,8 @@
       else if (kind === "middle") dy = (pr.top + pr.height / 2) - (r.top + r.height / 2);
       else if (kind === "bottom") dy = pr.bottom - r.bottom;
       const t = getTranslate(el);
-      setTranslate(el, t.x + dx, t.y + dy);
+      const s = cumulativeScale(el); // 화면에서 잰 거리 → 요소 로컬 px
+      setTranslate(el, t.x + dx / s.x, t.y + dy / s.y);
     });
     updateHandles();
     syncFromPreview();
@@ -2314,7 +2366,31 @@
     } else {
       idx = Math.max(0, idx - 1);
     }
+
+    // 캔바처럼 커서 아래 지점이 고정된 채 확대·축소되도록 스크롤 보정.
+    // (iframe 안에서 온 휠 이벤트는 iframe 문서 좌표라 부모 좌표로 환산)
+    const prev = currentScale || 1;
+    const vp = previewViewport.getBoundingClientRect();
+    let ax, ay; // 커서의 뷰포트 내 위치
+    if (e.view && e.view !== window) {
+      const ir = iframe.getBoundingClientRect();
+      ax = ir.left + e.clientX * prev - vp.left;
+      ay = ir.top + e.clientY * prev - vp.top;
+    } else {
+      ax = e.clientX - vp.left;
+      ay = e.clientY - vp.top;
+    }
+    // 커서가 가리키던 문서 좌표(디자인 px)
+    const irBefore = iframe.getBoundingClientRect();
+    const cx = (vp.left + ax - irBefore.left) / prev;
+    const cy = (vp.top + ay - irBefore.top) / prev;
+
     setZoomPercent(ZOOM_STEPS[idx]);
+
+    const ns = currentScale || 1;
+    const irAfter = iframe.getBoundingClientRect();
+    previewViewport.scrollLeft += (irAfter.left + cx * ns) - (vp.left + ax);
+    previewViewport.scrollTop += (irAfter.top + cy * ns) - (vp.top + ay);
   }
   previewViewport.addEventListener("wheel", handleZoomWheel, { passive: false });
 
@@ -2553,8 +2629,20 @@
 
   $("#btnCopyCode").addEventListener("click", copyCode);
 
+  /** 저장 파일 이름: 편집 중인 디자인 이름 → 문서 <title> → 기본값 순 */
+  function exportBaseName() {
+    let name = "";
+    try {
+      const d = currentDesign();
+      if (d && d.name) name = d.name;
+      else if (iframe.contentDocument) name = iframe.contentDocument.title || "";
+    } catch (_) {}
+    name = name.trim().replace(/[\\/:*?"<>|]/g, "_").slice(0, 60).trim();
+    return name || "live-html";
+  }
+
   function downloadHTML() {
-    downloadBlob(new Blob([codeInput.value], { type: "text/html;charset=utf-8" }), "live-html.html");
+    downloadBlob(new Blob([codeInput.value], { type: "text/html;charset=utf-8" }), exportBaseName() + ".html");
     toast("HTML 파일을 저장했어요", "download_done");
   }
 
@@ -2563,6 +2651,18 @@
   const dlPngBtn = $("#dlPng");
   const dlPngLabel = $("#dlPngLabel");
   let detectedPages = [];
+
+  /** 선택한 이미지 크기 기준, 각 페이지가 실제로 저장될 px을 목록에 표시 */
+  function updatePngSizeHints() {
+    const target = parseInt($("#pngSize").value, 10) || 0;
+    $("#pngPages").querySelectorAll(".png-page").forEach((row) => {
+      const w = parseFloat(row.dataset.w) || 1;
+      const h = parseFloat(row.dataset.h) || 1;
+      const k = target ? target / Math.max(w, h) : 1;
+      const out = row.querySelector(".png-out");
+      if (out) out.textContent = `→ ${Math.max(1, Math.round(w * k))}×${Math.max(1, Math.round(h * k))}px 저장`;
+    });
+  }
 
   function openDownloadModal() {
     if (!requireContent()) return;
@@ -2574,12 +2674,15 @@
       const r = el.getBoundingClientRect();
       const label = document.createElement("label");
       label.className = "png-page";
+      label.dataset.w = r.width || 1;
+      label.dataset.h = r.height || 1;
       label.innerHTML = `
         <input type="checkbox" checked data-idx="${i}" />
         <span>페이지 ${i + 1}</span>
-        <span class="dim">${Math.round(r.width)} × ${Math.round(r.height)}px</span>`;
+        <span class="dim">${Math.round(r.width)} × ${Math.round(r.height)}px <b class="png-out"></b></span>`;
       list.appendChild(label);
     });
+    updatePngSizeHints();
     $("#pngToggleAll").textContent = "전체 해제";
     // 페이지가 1개뿐이면 '한 장으로' 모드 의미가 없으므로 숨김
     $("#dlModes").style.display = detectedPages.length > 1 ? "" : "none";
@@ -2590,6 +2693,7 @@
   function closeDownloadModal() { downloadModal.hidden = true; }
 
   $("#btnDownload").addEventListener("click", openDownloadModal);
+  $("#pngSize").addEventListener("change", updatePngSizeHints);
   $("#dlClose").addEventListener("click", closeDownloadModal);
   downloadModal.addEventListener("click", (e) => {
     if (e.target === downloadModal) closeDownloadModal();
@@ -2802,15 +2906,23 @@
     }
   }
 
+  // 캔버스가 브라우저 한계(특히 사파리)를 넘으면 toBlob이 null을 돌려준다
+  // → 조용히 깨진 파일을 만들지 말고 명확한 오류로 알린다.
   const canvasToBlob = (canvas) =>
-    new Promise((res) => canvas.toBlob(res, "image/png"));
+    new Promise((res, rej) => {
+      try {
+        canvas.toBlob((b) => (b ? res(b) : rej(new Error("canvas-too-large"))), "image/png");
+      } catch (e) { rej(e); }
+    });
 
   // 캡처 결과의 긴 변을 정확히 targetSide(px)로 맞춘다.
   // html-to-image·html2canvas의 서브픽셀 반올림 탓에 1920이 1919/1921로
-  // 어긋나는 일을 막는다. 8배 확대 상한에 걸린 경우엔 그대로 둔다.
+  // 어긋나는 일을 막는다. (렌더 배율은 메모리 보호를 위해 8배로 제한하지만,
+  // 이 마지막 보정은 상한 없이 항상 정확한 크기로 리샘플링한다 —
+  // 작은 디자인도 '긴 변 1920px'을 고르면 반드시 1920px로 나온다.)
   function fitToLongSide(src, w, h, targetSide) {
     const longSide = Math.max(w, h) || 1;
-    const k = Math.min(targetSide / longSide, 8);
+    const k = targetSide / longSide;
     const outW = Math.max(1, Math.round(w * k));
     const outH = Math.max(1, Math.round(h * k));
     if (src.width === outW && src.height === outH) return src;
@@ -2868,27 +2980,30 @@
           ctx.drawImage(c, Math.round((width - c.width) / 2), y);
           y += c.height;
         });
-        downloadBlob(await canvasToBlob(merged), "live-html.png");
+        downloadBlob(await canvasToBlob(merged), exportBaseName() + ".png");
         toast("한 장으로 이어붙인 PNG를 저장했어요", "photo_library");
       } else if (canvases.length === 1) {
-        downloadBlob(await canvasToBlob(canvases[0]), "live-html.png");
+        downloadBlob(await canvasToBlob(canvases[0]), exportBaseName() + ".png");
         toast("PNG를 저장했어요", "photo_library");
       } else {
         // 여러 장은 ZIP으로 묶어 한 번에
         dlPngLabel.textContent = "압축 중…";
         try {
+          const base = exportBaseName();
           const JSZip = await loadScriptOnce(JSZIP_SRC, () => window.JSZip);
           const zip = new JSZip();
           for (let i = 0; i < canvases.length; i++) {
-            zip.file(`live-html_p${i + 1}.png`, await canvasToBlob(canvases[i]));
+            zip.file(`${base}_p${i + 1}.png`, await canvasToBlob(canvases[i]));
           }
           const blob = await zip.generateAsync({ type: "blob" });
-          downloadBlob(blob, "live-html_png.zip");
+          downloadBlob(blob, `${base}_png.zip`);
           toast(`PNG ${canvases.length}장을 ZIP으로 저장했어요`, "folder_zip");
-        } catch (_) {
+        } catch (zipErr) {
+          if (String(zipErr && zipErr.message) === "canvas-too-large") throw zipErr;
           // ZIP 라이브러리를 못 불러오면 낱장으로 순차 저장
+          const base = exportBaseName();
           for (let i = 0; i < canvases.length; i++) {
-            downloadBlob(await canvasToBlob(canvases[i]), `live-html_p${i + 1}.png`);
+            downloadBlob(await canvasToBlob(canvases[i]), `${base}_p${i + 1}.png`);
             await new Promise((r) => setTimeout(r, 350));
           }
           toast(`PNG ${canvases.length}장을 저장했어요`, "photo_library");
@@ -2897,7 +3012,11 @@
       closeDownloadModal();
     } catch (err) {
       console.error(err);
-      toast("이미지 변환에 실패했어요. 외부 이미지가 차단됐을 수 있어요", "error", true);
+      if (String(err && err.message) === "canvas-too-large") {
+        toast("이미지가 너무 커서 만들지 못했어요. 이미지 크기를 '표준'으로 낮추거나 페이지 수를 줄여 보세요", "error", true);
+      } else {
+        toast("이미지 변환에 실패했어요. 외부 이미지가 차단됐을 수 있어요", "error", true);
+      }
     } finally {
       dlPngBtn.disabled = false;
       dlPngLabel.textContent = "PNG 저장";
