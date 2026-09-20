@@ -36,6 +36,9 @@
       <button id="btnMyDesigns" class="btn btn-tertiary admin-only" hidden title="내 디자인 대시보드 열기/닫기">
         <span class="material-symbols-outlined">dashboard</span><span class="btn-label">내 디자인</span>
       </button>
+      <button id="btnCode" class="btn btn-tertiary" title="HTML 코드 패널 열기/닫기" aria-pressed="false">
+        <span class="material-symbols-outlined">code</span><span class="btn-label">코드</span>
+      </button>
       <button id="btnHelp" class="btn btn-icon" title="사용 방법" aria-label="사용 방법">
         <span class="material-symbols-outlined">help</span>
       </button>
@@ -53,12 +56,6 @@
       <div class="pane-toolbar">
         <span class="pane-title"><span class="material-symbols-outlined">code_blocks</span><span class="pt-text">HTML 코드</span></span>
         <div class="pane-tools">
-          <button id="btnUpload" class="btn btn-tertiary btn-sm">
-            <span class="material-symbols-outlined">upload_file</span><span class="btn-label">업로드</span>
-          </button>
-          <button id="btnPaste" class="btn btn-tertiary btn-sm">
-            <span class="material-symbols-outlined">content_paste</span><span class="btn-label">붙여넣기</span>
-          </button>
           <button id="btnCopyCode" class="btn btn-tertiary btn-sm">
             <span class="material-symbols-outlined">content_copy</span><span class="btn-label">복사</span>
           </button>
@@ -80,35 +77,50 @@
     <!-- 실시간 결과 확인창 -->
     <section class="pane preview-pane" aria-label="실시간 미리보기">
       <div class="pane-toolbar">
-        <span class="pane-title"><span class="material-symbols-outlined">visibility</span><span class="pt-text">실시간 미리보기</span></span>
+        <div class="pane-files">
+          <button id="btnUpload" class="btn btn-tertiary btn-sm" title="HTML 파일 불러오기">
+            <span class="material-symbols-outlined">upload_file</span><span class="btn-label">업로드</span>
+          </button>
+          <button id="btnPaste" class="btn btn-tertiary btn-sm" title="클립보드의 HTML 붙여넣기">
+            <span class="material-symbols-outlined">content_paste</span><span class="btn-label">붙여넣기</span>
+          </button>
+          <button id="btnTemplates" class="btn btn-tertiary btn-sm" title="템플릿 고르기">
+            <span class="material-symbols-outlined">space_dashboard</span><span class="btn-label">템플릿</span>
+          </button>
+        </div>
         <div class="pane-tools">
           <button id="btnMagic" class="btn btn-tertiary btn-sm" title="페이지 크기 변환 (카드뉴스 ↔ 포스터 ↔ PPT)">
             <span class="material-symbols-outlined">magic_exchange</span><span class="btn-label">변환</span>
           </button>
           <div class="mode-toggle" role="group" aria-label="모드 선택">
-            <button id="modeEdit" class="mode-btn active"><span class="material-symbols-outlined">edit</span>편집</button>
-            <button id="modeView" class="mode-btn"><span class="material-symbols-outlined">play_arrow</span>보기</button>
+            <button id="modeEdit" class="mode-btn active" title="편집 모드 — 화면에서 바로 고치기" aria-label="편집 모드"><span class="material-symbols-outlined">edit</span>편집</button>
+            <button id="modeView" class="mode-btn" title="보기 모드 — 결과만 보기" aria-label="보기 모드"><span class="material-symbols-outlined">play_arrow</span>보기</button>
           </div>
-          <select id="zoomSelect" class="zoom-select" aria-label="화면 배율">
-            <option value="fit" selected>자동 맞춤</option>
-            <option value="50">50%</option>
-            <option value="75">75%</option>
-            <option value="100">100%</option>
-            <option value="150">150%</option>
-            <option value="200">200%</option>
-          </select>
+          <div class="zoom-group">
+            <button id="zoomOut" class="zoom-btn" title="축소 (Ctrl+휠)" aria-label="축소"><span class="material-symbols-outlined">remove</span></button>
+            <select id="zoomSelect" class="zoom-select" aria-label="화면 배율">
+              <option value="fit" selected>자동 맞춤</option>
+              <option value="25">25%</option>
+              <option value="50">50%</option>
+              <option value="75">75%</option>
+              <option value="100">100%</option>
+              <option value="150">150%</option>
+              <option value="200">200%</option>
+            </select>
+            <button id="zoomIn" class="zoom-btn" title="확대 (Ctrl+휠)" aria-label="확대"><span class="material-symbols-outlined">add</span></button>
+          </div>
         </div>
       </div>
 
       <!-- 요소 선택 시 나타나는 편집 도구 -->
       <div class="edit-toolbar" id="editToolbar" hidden>
         <span class="sel-chip" id="selChip">div</span>
-        <div class="tool-group">
+        <div class="tool-group keep" data-label="글꼴">
           <button class="tool-btn font-btn" id="fontBtn" title="글꼴 변경">
             <span id="fontName">글꼴</span><span class="material-symbols-outlined">expand_more</span>
           </button>
         </div>
-        <div class="tool-group">
+        <div class="tool-group" data-label="글자 꾸미기">
           <button class="tool-btn" data-act="text-edit" title="텍스트 편집 (더블클릭)"><span class="material-symbols-outlined">edit_note</span></button>
           <button class="tool-btn" data-act="font-dec" title="글자 작게"><span class="material-symbols-outlined">text_decrease</span></button>
           <input type="number" id="fontSizeInput" class="size-input" min="6" max="400" step="1" title="글자 크기 (px)" aria-label="글자 크기" />
@@ -123,20 +135,23 @@
           <button class="tool-btn" data-act="effects" title="글자 효과"><span class="material-symbols-outlined">auto_fix_high</span></button>
           <button class="tool-btn" data-act="style" title="도형·테두리 스타일"><span class="material-symbols-outlined">tune</span></button>
         </div>
-        <div class="tool-group">
+        <div class="tool-group" data-label="정렬">
           <button class="tool-btn" data-act="align-left" title="왼쪽 정렬"><span class="material-symbols-outlined">format_align_left</span></button>
           <button class="tool-btn" data-act="align-center" title="가운데 정렬"><span class="material-symbols-outlined">format_align_center</span></button>
           <button class="tool-btn" data-act="align-right" title="오른쪽 정렬"><span class="material-symbols-outlined">format_align_right</span></button>
           <button class="tool-btn" data-act="arrange" title="위치 정렬 · 쌓임 순서"><span class="material-symbols-outlined">align_horizontal_center</span></button>
         </div>
-        <div class="tool-group">
+        <div class="tool-group" data-label="요소 다루기">
           <button class="tool-btn" data-act="image" id="btnImage" title="이미지 교체" hidden><span class="material-symbols-outlined">image</span></button>
           <button class="tool-btn" data-act="select-parent" title="상위 요소 선택"><span class="material-symbols-outlined">move_up</span></button>
           <button class="tool-btn" data-act="duplicate" title="복제"><span class="material-symbols-outlined">content_copy</span></button>
           <button class="tool-btn" data-act="lock" id="btnLock" title="잠금 / 잠금 해제"><span class="material-symbols-outlined" id="lockIcon">lock_open</span></button>
           <button class="tool-btn" data-act="reset-pos" title="위치·회전 초기화"><span class="material-symbols-outlined">restart_alt</span></button>
+        </div>
+        <div class="tool-group keep" data-label="삭제">
           <button class="tool-btn danger" data-act="delete" title="삭제 (Delete)"><span class="material-symbols-outlined">delete</span></button>
         </div>
+        <button class="tool-btn more-btn" id="toolMore" title="더 보기" aria-label="다른 도구 더 보기" hidden><span class="material-symbols-outlined">more_horiz</span></button>
         <button class="tool-btn close" data-act="deselect" title="선택 해제 (Esc)"><span class="material-symbols-outlined">close</span></button>
       </div>
 
@@ -228,6 +243,27 @@
         </div>
       </div>
 
+      <!-- 넘친 도구를 담는 패널 -->
+      <div class="font-panel more-panel" id="morePanel" hidden></div>
+
+      <div class="preview-body">
+      <!-- 페이지 레일 (캔바식 썸네일 목록) -->
+      <aside class="page-rail" id="pageRail" aria-label="페이지 목록">
+        <div class="rail-head">
+          <span>페이지</span><span class="rail-count" id="railCount">0</span>
+          <button class="btn btn-icon" id="railCollapse" title="페이지 목록 접기" aria-label="페이지 목록 접기">
+            <span class="material-symbols-outlined">left_panel_close</span>
+          </button>
+        </div>
+        <div class="rail-list" id="railList"></div>
+        <button class="rail-add" id="railAdd" title="맨 뒤에 빈 페이지를 추가해요">
+          <span class="material-symbols-outlined">add</span>페이지 추가
+        </button>
+      </aside>
+      <button class="rail-reopen" id="railReopen" title="페이지 목록 펴기">
+        <span class="material-symbols-outlined">left_panel_open</span>페이지
+      </button>
+
       <div class="preview-viewport" id="previewViewport">
         <div class="preview-canvas" id="previewCanvas">
           <iframe id="preview" title="HTML 미리보기" sandbox="allow-same-origin allow-scripts"></iframe>
@@ -251,10 +287,12 @@
           </div>
         </div>
 
-        <div class="edit-hint" id="editHint" hidden>
-          <span class="material-symbols-outlined">touch_app</span>
-          요소를 누르면 선택, 두 번 누르면 글자 수정, 끌면 이동해요
-        </div>
+      </div>
+      </div>
+
+      <div class="edit-hint" id="editHint" hidden>
+        <span class="material-symbols-outlined">touch_app</span>
+        요소를 누르면 선택, 두 번 누르면 글자 수정, 끌면 이동해요
       </div>
 
       <!-- 삽입 버튼 (FAB) -->
@@ -522,12 +560,17 @@
         </div>
         <div class="help-step">
           <span class="help-num">3</span>
-          <div><strong>➕ 새 요소 더하기</strong><p>오른쪽 아래 파란 + 버튼으로 글자·도형·이모지·사진을 넣어요.</p></div>
+          <div><strong>📑 페이지 넘나들기</strong><p>왼쪽 <strong>페이지 목록</strong>에서 원하는 장을 눌러 바로 이동해요. 끌어서 순서를 바꾸고, 썸네일 위 버튼으로 복제·삭제할 수 있어요.</p></div>
         </div>
         <div class="help-step">
           <span class="help-num">4</span>
+          <div><strong>➕ 새 요소 더하기</strong><p>오른쪽 아래 파란 + 버튼으로 글자·도형·이모지·사진을 넣어요.</p></div>
+        </div>
+        <div class="help-step">
+          <span class="help-num">5</span>
           <div><strong>💾 저장하고 공유하기</strong><p>위의 [저장 · 공유] 버튼에서 HTML 파일이나 PNG 이미지로 받아요.</p></div>
         </div>
+        <p class="help-tip">💡 HTML 코드를 직접 보고 싶다면 헤더의 <strong>[&lt;&gt; 코드]</strong> 버튼을 눌러요. 한 번 열어 두면 다음에도 열린 채로 시작해요.</p>
         <div class="help-shortcuts">
           <strong>⌨️ 단축키 모음</strong>
           <div class="sc-grid">
@@ -540,6 +583,7 @@
             <span class="sc-keys"><kbd>Alt</kbd>+드래그</span><span>자석 정렬 없이 자유롭게 이동</span>
             <span class="sc-keys"><kbd>Ctrl</kbd>+휠</span><span>미리보기 확대 · 축소</span>
             <span class="sc-keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span>저장 (HTML 파일 / 내 디자인)</span>
+            <span class="sc-keys"><kbd>Alt</kbd>+↑ / ↓</span><span>페이지 목록에서 페이지 순서 바꾸기</span>
             <span class="sc-keys"><kbd>Esc</kbd></span><span>선택 해제 · 패널 닫기</span>
           </div>
         </div>
