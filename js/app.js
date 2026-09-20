@@ -275,6 +275,7 @@
   }
 
   function openFontPanel() {
+    closeMorePanel();
     if (!selectedEl) return;
     closeInsertPanel();
     closeEffectPanel();
@@ -314,6 +315,9 @@
     if (!arrangePanel.hidden && !arrangePanel.contains(e.target) &&
         !(e.target.closest && e.target.closest("[data-act='arrange']"))) {
       closeArrangePanel();
+    }
+    if (!morePanel.hidden && !morePanel.contains(e.target) && !toolMore.contains(e.target)) {
+      closeMorePanel();
     }
     // 작업창(미리보기) 바깥 — 코드창·헤더 등을 누르면 요소 선택 해제
     // (iframe 내부 클릭은 부모 document 로 전달되지 않으므로 캔버스 클릭은 영향 없음)
@@ -501,7 +505,7 @@
     const doc = iframe.contentDocument;
     if (!doc || !doc.documentElement) return "";
     const clone = doc.documentElement.cloneNode(true);
-    clone.querySelectorAll("#__lh_style, script[data-lh], .__lh_ui").forEach((e) => e.remove());
+    clone.querySelectorAll("#__lh_style, #__lh_gap, script[data-lh], .__lh_ui").forEach((e) => e.remove());
     clone.querySelectorAll("[data-lh-hover], [data-lh-selected], [data-lh-page], [contenteditable]").forEach((e) => {
       e.removeAttribute("data-lh-hover");
       e.removeAttribute("data-lh-selected");
@@ -660,6 +664,12 @@
     });
   }
 
+  /** 페이지 마커 + 왼쪽 레일을 함께 맞춘다 */
+  function refreshPagesUI() {
+    refreshPageMarkers();
+    try { refreshRail(); } catch (_) {}
+  }
+
   /* ---- 페이지 추가 / 복제 / 삭제 ---- */
   function addPageAfter(page) {
     const r = page.getBoundingClientRect();
@@ -722,7 +732,7 @@
       page.removeAttribute("data-lh-lock");
     }
     syncFromPreview();
-    refreshPageMarkers();
+    refreshPagesUI();
     toast(locking
       ? "페이지를 잠갔어요. 안의 요소는 선택할 수 없어요"
       : "페이지 잠금을 풀었어요", locking ? "lock" : "lock_open");
@@ -804,6 +814,8 @@
     selectedEl = null;
     extraSel = [];
     editToolbar.hidden = true;
+    reserveToolbarSpace(false);
+    closeMorePanel();
     closeFontPanel();
     closeEffectPanel();
     closeFillPanel();
@@ -845,9 +857,74 @@
     $("#lockIcon").textContent = isLockedEl(el) ? "lock" : "lock_open";
     $("#btnLock").classList.toggle("locked", isLockedEl(el));
     editToolbar.hidden = false;
+    reserveToolbarSpace(true);
+    layoutToolbar();
     updateFontChip();
     updateFontSizeInput();
   }
+
+  /**
+   * 편집 도구 바는 미리보기 위에 겹쳐 뜨므로, 그 높이만큼 뷰포트 위쪽에
+   * 여백을 만들어 페이지 컨트롤 바가 가려지지 않게 한다.
+   * 여백이 생기면서 화면이 튀지 않도록 스크롤을 같은 값만큼 보정한다.
+   */
+  const previewPane = document.querySelector(".preview-pane");
+  function reserveToolbarSpace(on) {
+    const next = on ? Math.ceil(editToolbar.getBoundingClientRect().height) + 14 : 0;
+    const prev = parseFloat(previewPane.style.getPropertyValue("--tb-space")) || 0;
+    if (Math.abs(next - prev) < 1) return;
+    const prevBehavior = previewViewport.style.scrollBehavior;
+    previewViewport.style.scrollBehavior = "auto";
+    // 도구 막대는 미리보기 위에 겹쳐 뜨므로, 캔버스와 페이지 레일 모두
+    // 그 높이만큼 아래로 내려 가려지지 않게 한다.
+    previewPane.style.setProperty("--tb-space", next + "px");
+    // 스크롤 중이었다면 화면이 튀지 않게 같은 값만큼 보정한다.
+    // 맨 위에 있을 때는 보정하지 않는다 — 보정하면 첫 페이지가 도구 막대 밑으로 숨는다.
+    if (previewViewport.scrollTop > 0) {
+      previewViewport.scrollTop = Math.max(0, previewViewport.scrollTop + (next - prev));
+    }
+    previewViewport.style.scrollBehavior = prevBehavior;
+  }
+
+  /* ---- 도구 바 넘침 처리: 좁은 화면에서 '더 보기'로 접기 ---- */
+  const toolMore = $("#toolMore");
+  const morePanel = $("#morePanel");
+  let overflowGroups = [];
+
+  function restoreToolGroups() {
+    overflowGroups.forEach((g) => editToolbar.insertBefore(g, toolMore));
+    overflowGroups = [];
+    toolMore.hidden = true;
+    toolMore.classList.remove("on");
+    morePanel.hidden = true;
+  }
+
+  function layoutToolbar() {
+    if (editToolbar.hidden) { restoreToolGroups(); return; }
+    restoreToolGroups();
+    // 가장 덜 쓰는 그룹(뒤쪽)부터 '더 보기'로 옮겨 한 줄에 맞춘다
+    let guard = 0;
+    while (editToolbar.scrollWidth > editToolbar.clientWidth + 1 && guard++ < 12) {
+      const movable = [...editToolbar.querySelectorAll(".tool-group:not(.keep)")];
+      const g = movable.pop();
+      if (!g) break;
+      morePanel.prepend(g);
+      overflowGroups.unshift(g);
+      toolMore.hidden = false;
+    }
+  }
+  const layoutToolbarDebounced = debounce(layoutToolbar, 120);
+  window.addEventListener("resize", layoutToolbarDebounced);
+
+  toolMore.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const show = morePanel.hidden;
+    closeFontPanel(); closeEffectPanel(); closeFillPanel();
+    closeStylePanel(); closeArrangePanel();
+    morePanel.hidden = !show;
+    toolMore.classList.toggle("on", show);
+  });
+  function closeMorePanel() { morePanel.hidden = true; toolMore.classList.remove("on"); }
 
   /**
    * 요소 선택. opts.additive=true 이면 다중 선택 토글(Ctrl+클릭).
@@ -1627,7 +1704,11 @@
     toast(copies.length > 1 ? `요소 ${copies.length}개를 복제했어요` : "요소를 복제했어요", "content_copy");
   }
 
-  editToolbar.addEventListener("click", (e) => {
+  // '더 보기'로 옮겨진 도구도 같은 처리를 타도록 두 곳에 같은 핸들러를 건다
+  editToolbar.addEventListener("click", onToolAction);
+  morePanel.addEventListener("click", onToolAction);
+
+  function onToolAction(e) {
     const btn = e.target.closest("[data-act]");
     if (!btn || !selectedEl) return;
     const act = btn.dataset.act;
@@ -1719,7 +1800,7 @@
         return;
     }
     syncFromPreview();
-  });
+  }
 
   fontSizeInput.addEventListener("change", () => {
     if (!selectedEl || guardLocked()) return;
@@ -1803,6 +1884,7 @@
   }
 
   function openFillPanel() {
+    closeMorePanel();
     if (!selectedEl) return;
     closeFontPanel();
     closeEffectPanel();
@@ -1846,6 +1928,7 @@
   }
 
   function openEffectPanel() {
+    closeMorePanel();
     if (!selectedEl) return;
     closeFontPanel();
     closeInsertPanel();
@@ -1888,6 +1971,7 @@
   }
 
   function openStylePanel() {
+    closeMorePanel();
     if (!selectedEl) return;
     closeFontPanel();
     closeEffectPanel();
@@ -1963,6 +2047,7 @@
 
   /* ---- 정렬·순서 패널 — 페이지 기준 정렬 + 쌓임 순서(맨 앞/맨 뒤) ---- */
   function openArrangePanel() {
+    closeMorePanel();
     if (!selectedEl) return;
     closeFontPanel();
     closeEffectPanel();
@@ -2316,6 +2401,281 @@
   });
 
   /* ============================================================
+   * 페이지 레일 — 캔바처럼 페이지 썸네일을 왼쪽에 세로로 보여 주고
+   * 클릭으로 이동, 드래그로 순서 변경, 복제·삭제까지 한 자리에서.
+   * 썸네일은 html2canvas 없이 '축소한 iframe'으로 그려 항상 실제 화면과 같다.
+   * ============================================================ */
+  const RAIL_KEY = "livehtml:railOpen";
+  const SORTABLE_SRC = "https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js";
+  const pageRail = $("#pageRail");
+  const railList = $("#railList");
+  const railCount = $("#railCount");
+  let railItems = [];        // { root, thumb, frame, num, sig }
+  let sortableReady = false;
+
+  try {
+    if (localStorage.getItem(RAIL_KEY) === "0") document.body.classList.add("rail-collapsed");
+  } catch (_) {}
+
+  function setRailOpen(open) {
+    document.body.classList.toggle("rail-collapsed", !open);
+    try { localStorage.setItem(RAIL_KEY, open ? "1" : "0"); } catch (_) {}
+    applyZoom();
+    if (open) refreshRailThumbs();
+  }
+  $("#railCollapse").addEventListener("click", () => setRailOpen(false));
+  $("#railReopen").addEventListener("click", () => setRailOpen(true));
+
+  /** 썸네일 한 칸에 넣을 수 있는 가로 폭(px) */
+  function railThumbWidth() {
+    const w = railList.clientWidth - 16 - 22; // 좌우 패딩 + 번호 칸
+    return Math.max(56, w);
+  }
+
+  /** 페이지 내용이 바뀌었는지 싸게 판별하기 위한 지문 */
+  function pageSignature(el) {
+    const r = el.getBoundingClientRect();
+    return [
+      Math.round(r.width), Math.round(r.height),
+      el.childElementCount,
+      el.textContent.length,
+      el.getElementsByTagName("*").length,
+      el.className,
+    ].join("|");
+  }
+
+  /** 페이지 하나를 그대로 담은 미니 문서 (원본 <head>의 스타일·글꼴을 그대로 사용) */
+  function pageThumbDoc(doc, pageEl) {
+    const head = doc.head ? doc.head.cloneNode(true) : null;
+    if (head) head.querySelectorAll("#__lh_style, #__lh_gap, .__lh_ui, script").forEach((e) => e.remove());
+    const body = pageEl.cloneNode(true);
+    body.querySelectorAll(".__lh_ui, script").forEach((e) => e.remove());
+    ["data-lh-page", "data-lh-selected", "data-lh-hover", "data-lh-lock"].forEach((a) => body.removeAttribute(a));
+    body.querySelectorAll("[data-lh-selected], [data-lh-hover], [contenteditable]").forEach((e) => {
+      e.removeAttribute("data-lh-selected");
+      e.removeAttribute("data-lh-hover");
+      e.removeAttribute("contenteditable");
+    });
+    const bodyCls = doc.body ? doc.body.className.replace(/__lh_\S+/g, "").trim() : "";
+    return "<!DOCTYPE html><html><head>" + (head ? head.innerHTML : "") +
+      "<style>html,body{margin:0!important;padding:0!important;overflow:hidden!important;}</style></head>" +
+      '<body class="' + bodyCls.replace(/"/g, "&quot;") + '">' + body.outerHTML + "</body></html>";
+  }
+
+  function makeRailItem(i) {
+    const root = document.createElement("div");
+    root.className = "rail-item";
+    root.tabIndex = 0;
+    root.setAttribute("role", "button");
+
+    const num = document.createElement("span");
+    num.className = "rail-num";
+    const thumb = document.createElement("div");
+    thumb.className = "rail-thumb";
+    const ph = document.createElement("div");
+    ph.className = "rail-ph";
+    thumb.appendChild(ph);
+
+    const tools = document.createElement("div");
+    tools.className = "rail-item-tools";
+    const mk = (icon, title, act, danger) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.title = title;
+      b.setAttribute("aria-label", title);
+      b.dataset.act = act;
+      if (danger) b.className = "danger";
+      b.innerHTML = '<span class="material-symbols-outlined"></span>';
+      b.firstChild.textContent = icon;
+      return b;
+    };
+    // 드래그(SortableJS)를 못 쓰는 환경에서도 순서를 바꿀 수 있게 ▲▼ 를 함께 둔다
+    tools.appendChild(mk("keyboard_arrow_up", "위로 옮기기", "up"));
+    tools.appendChild(mk("keyboard_arrow_down", "아래로 옮기기", "down"));
+    tools.appendChild(mk("content_copy", "이 페이지 복제", "dup"));
+    tools.appendChild(mk("delete", "이 페이지 삭제", "del", true));
+    thumb.appendChild(tools);
+
+    root.appendChild(num);
+    root.appendChild(thumb);
+    railList.appendChild(root);
+
+    root.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-act]");
+      const el = railItems[[...railList.children].indexOf(root)];
+      const pageEl = el && el.pageEl;
+      if (!pageEl) return;
+      if (b) {
+        e.stopPropagation();
+        const act = b.dataset.act;
+        if (act === "up") movePageUp(pageEl);
+        else if (act === "down") movePageDown(pageEl);
+        else if (act === "dup") duplicatePage(pageEl);
+        else deletePage(pageEl);
+        return;
+      }
+      scrollToPage(pageEl);
+      selectElement(pageEl);
+    });
+    root.addEventListener("keydown", (e) => {
+      const it = railItems[[...railList.children].indexOf(root)];
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); root.click(); }
+      else if (e.altKey && e.key === "ArrowUp" && it && it.pageEl) { e.preventDefault(); movePageUp(it.pageEl); }
+      else if (e.altKey && e.key === "ArrowDown" && it && it.pageEl) { e.preventDefault(); movePageDown(it.pageEl); }
+    });
+    return { root, thumb, ph, num, frame: null, sig: "", pageEl: null };
+  }
+
+  /** 레일 구조(개수·번호·활성 상태)만 빠르게 맞춘다 — 매 렌더마다 호출돼도 가볍다 */
+  function refreshRail() {
+    const doc = iframe.contentDocument;
+    const hasContent = !!codeInput.value.trim();
+    const list = hasContent && doc && doc.body
+      ? (pages.length ? pages : detectPages()).filter((p) => p !== doc.body)
+      : [];
+    railCount.textContent = String(list.length);
+    pageRail.setAttribute("aria-hidden", list.length ? "false" : "true");
+
+    while (railList.children.length > list.length) {
+      railList.lastElementChild.remove();
+      railItems.pop();
+    }
+    while (railList.children.length < list.length) railItems.push(makeRailItem(railItems.length));
+
+    list.forEach((pageEl, i) => {
+      const it = railItems[i];
+      it.pageEl = pageEl;
+      it.num.textContent = String(i + 1);
+      it.root.setAttribute("aria-label", `페이지 ${i + 1}로 이동`);
+      it.root.classList.toggle("locked", isLockedEl(pageEl));
+      it.ph.textContent = String(i + 1);
+    });
+    ensureSortable();
+    refreshRailThumbsDebounced();
+    updateRailActive();
+  }
+
+  /** 실제 썸네일 그리기 — 내용이 바뀐 페이지만 다시 그린다 */
+  function refreshRailThumbs() {
+    if (document.body.classList.contains("rail-collapsed")) return;
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return;
+    const tw = railThumbWidth();
+    railItems.forEach((it) => {
+      const el = it.pageEl;
+      if (!el || !el.isConnected) return;
+      const r = el.getBoundingClientRect();
+      const pw = Math.max(1, r.width);
+      const ph = Math.max(1, r.height);
+      const sc = tw / pw;
+      it.thumb.style.height = Math.max(24, Math.round(ph * sc)) + "px";
+      const sig = pageSignature(el) + "|" + tw;
+      if (sig === it.sig && it.frame) return;
+      it.sig = sig;
+      let f = it.frame;
+      if (!f) {
+        f = document.createElement("iframe");
+        f.setAttribute("sandbox", "allow-same-origin");
+        f.setAttribute("tabindex", "-1");
+        f.setAttribute("aria-hidden", "true");
+        f.setAttribute("scrolling", "no");
+        it.thumb.insertBefore(f, it.thumb.firstChild);
+        it.frame = f;
+        it.ph.style.display = "none";
+      }
+      f.style.width = Math.round(pw) + "px";
+      f.style.height = Math.round(ph) + "px";
+      f.style.transform = `scale(${sc})`;
+      try { f.srcdoc = pageThumbDoc(doc, el); } catch (_) {}
+    });
+  }
+  const refreshRailThumbsDebounced = debounce(refreshRailThumbs, 450);
+
+  /** 지금 화면 가운데에 놓인 페이지를 레일에서 강조 */
+  function updateRailActive() {
+    if (!railItems.length) return;
+    const vr = previewViewport.getBoundingClientRect();
+    const ir = iframe.getBoundingClientRect();
+    const mid = vr.top + vr.height * 0.42;
+    let best = 0, bestD = Infinity;
+    railItems.forEach((it, i) => {
+      if (!it.pageEl || !it.pageEl.isConnected) return;
+      const r = it.pageEl.getBoundingClientRect();
+      const top = ir.top + r.top * currentScale;
+      const bottom = top + r.height * currentScale;
+      const d = (mid >= top && mid <= bottom) ? 0 : Math.min(Math.abs(mid - top), Math.abs(mid - bottom));
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    railItems.forEach((it, i) => it.root.classList.toggle("active", i === best));
+    const act = railItems[best];
+    if (act && bestD === 0) {
+      const lr = act.root.getBoundingClientRect();
+      const rr = railList.getBoundingClientRect();
+      if (lr.top < rr.top + 4 || lr.bottom > rr.bottom - 4) {
+        act.root.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }
+  const updateRailActiveThrottled = (() => {
+    let t = 0;
+    return () => {
+      const now = Date.now();
+      if (now - t < 90) return;
+      t = now;
+      updateRailActive();
+    };
+  })();
+  previewViewport.addEventListener("scroll", updateRailActiveThrottled, { passive: true });
+
+  /** 해당 페이지가 화면 위쪽에 오도록 스크롤 */
+  function scrollToPage(pageEl) {
+    if (!pageEl || !pageEl.isConnected) return;
+    const ir = iframe.getBoundingClientRect();
+    const vr = previewViewport.getBoundingClientRect();
+    const r = pageEl.getBoundingClientRect();
+    const pad = parseFloat(getComputedStyle(previewViewport).paddingTop) || 20;
+    previewViewport.scrollTop += (ir.top + r.top * currentScale) - (vr.top + pad);
+  }
+
+  /** 드래그로 순서 바꾸기 — SortableJS(MIT). 못 받아오면 페이지 위 ▲▼ 버튼으로 대체된다. */
+  function ensureSortable() {
+    if (sortableReady || railItems.length < 2) return;
+    sortableReady = true;
+    loadScriptOnce(SORTABLE_SRC, () => window.Sortable)
+      .then((Sortable) => {
+        if (!Sortable) return;
+        Sortable.create(railList, {
+          animation: 140,
+          ghostClass: "rail-ghost",
+          chosenClass: "rail-chosen",
+          dragClass: "rail-drag",
+          filter: "button",
+          preventOnFilter: false,
+          onEnd(evt) {
+            const { oldIndex, newIndex } = evt;
+            if (oldIndex === newIndex) return;
+            const moved = railItems.splice(oldIndex, 1)[0];
+            railItems.splice(newIndex, 0, moved);
+            const order = railItems.map((it) => it.pageEl).filter(Boolean);
+            const parent = order[0] && order[0].parentNode;
+            if (parent) order.forEach((el) => parent.appendChild(el));
+            syncFromPreview();
+            applyZoom();
+            toast(`페이지를 ${oldIndex + 1} → ${newIndex + 1} 번으로 옮겼어요`, "swap_vert");
+          },
+        });
+      })
+      .catch(() => { /* 오프라인이면 조용히 건너뜀 — ▲▼ 버튼이 그대로 동작 */ });
+  }
+
+  $("#railAdd").addEventListener("click", () => {
+    if (!codeInput.value.trim()) { toast("먼저 HTML을 불러와 주세요", "info", true); return; }
+    const last = railItems.length ? railItems[railItems.length - 1].pageEl : null;
+    if (last) addPageAfter(last);
+    else toast("페이지를 찾지 못했어요", "info", true);
+  });
+
+  /* ============================================================
    * 모드 / 배율
    * ============================================================ */
   function setEditMode(on) {
@@ -2324,8 +2684,9 @@
     $("#modeView").classList.toggle("active", !on);
     document.body.classList.toggle("mode-view", !on);
     if (!on) { clearSelection(); closeInsertPanel(); }
-    refreshPageMarkers();
+    refreshPagesUI();
     updateHandles();
+    applyZoomDebounced();
   }
   $("#modeEdit").addEventListener("click", () => setEditMode(true));
   $("#modeView").addEventListener("click", () => setEditMode(false));
@@ -2334,6 +2695,40 @@
     zoomMode = zoomSelect.value;
     applyZoom();
   });
+
+  /* ---- 코드 패널 접기 / 펴기 (데스크톱) ----
+   * 코드를 모르는 분이 기본 화면에서 캔버스에만 집중할 수 있게 처음엔 접어 둔다.
+   * 한 번 연 사람은 그 선택을 기억한다. */
+  const CODE_OPEN_KEY = "livehtml:codeOpen";
+  const btnCode = $("#btnCode");
+  function setCodeOpen(open, { remember = true } = {}) {
+    document.body.classList.toggle("code-hidden", !open);
+    btnCode.classList.toggle("active", open);
+    btnCode.setAttribute("aria-pressed", open ? "true" : "false");
+    btnCode.title = open ? "HTML 코드 패널 닫기" : "HTML 코드 패널 열기";
+    if (remember) { try { localStorage.setItem(CODE_OPEN_KEY, open ? "1" : "0"); } catch (_) {} }
+    applyZoomDebounced();
+  }
+  btnCode.addEventListener("click", () => {
+    setCodeOpen(document.body.classList.contains("code-hidden"));
+  });
+  function initCodePane() {
+    let saved = null;
+    try { saved = localStorage.getItem(CODE_OPEN_KEY); } catch (_) {}
+    setCodeOpen(saved === "1", { remember: false });
+  }
+
+  /* ---- 확대 / 축소 버튼 ---- */
+  function stepZoom(dir) {
+    const cur = Math.round((currentScale || 1) * 100);
+    let idx = ZOOM_STEPS.findIndex((v) => v >= cur);
+    if (idx < 0) idx = ZOOM_STEPS.length - 1;
+    if (dir > 0) { if (ZOOM_STEPS[idx] <= cur) idx = Math.min(idx + 1, ZOOM_STEPS.length - 1); }
+    else idx = Math.max(0, idx - 1);
+    setZoomPercent(ZOOM_STEPS[idx]);
+  }
+  $("#zoomIn").addEventListener("click", () => stepZoom(1));
+  $("#zoomOut").addEventListener("click", () => stepZoom(-1));
 
   /* ---- Ctrl(⌘)+휠 확대·축소 — 캔바처럼 단계별 줌 ---- */
   const ZOOM_STEPS = [25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300];
@@ -2418,8 +2813,12 @@
   function applyZoom() {
     const doc = iframe.contentDocument;
     if (!doc || !doc.documentElement || !doc.body || !codeInput.value.trim()) return;
-    const pad = 40;
-    const baseW = Math.max(320, previewViewport.clientWidth - pad);
+    // 실제 여백(패딩)을 그대로 반영한다. 예전에는 최소 폭을 320px로 강제해
+    // 좁은 휴대폰에서 페이지가 화면 밖으로 삐져나갔다.
+    const vcs = getComputedStyle(previewViewport);
+    const padX = (parseFloat(vcs.paddingLeft) || 0) + (parseFloat(vcs.paddingRight) || 0);
+    const padY = (parseFloat(vcs.paddingTop) || 0) + (parseFloat(vcs.paddingBottom) || 0);
+    const baseW = Math.max(120, previewViewport.clientWidth - padX);
 
     // 콘텐츠 실제 너비 측정 (고정폭 카드뉴스 대응) — 수렴할 때까지 넓혀가며 반복
     iframe.style.transform = "none";
@@ -2442,7 +2841,7 @@
 
     let scale;
     if (zoomMode === "fit") {
-      const baseH = Math.max(200, previewViewport.clientHeight - pad);
+      const baseH = Math.max(160, previewViewport.clientHeight - padY);
       let firstPageH = contentH;
       const pts = detectPages();
       if (pts.length > 0 && pts[0] !== doc.body) {
@@ -2460,7 +2859,7 @@
 
     if (zoomMode === "fit") previewViewport.scrollLeft = 0;
 
-    refreshPageMarkers();
+    refreshPagesUI();
     updateHandles();
   }
   const applyZoomDebounced = debounce(applyZoom, 300);
@@ -2549,6 +2948,7 @@
   $("#btnPaste").addEventListener("click", pasteFromClipboard);
   $("#emptyPaste").addEventListener("click", pasteFromClipboard);
   $("#emptySample").addEventListener("click", () => openTemplates());
+  $("#btnTemplates").addEventListener("click", () => openTemplates());
 
   $("#btnClear").addEventListener("click", () => {
     if (!codeInput.value.trim()) return;
@@ -2596,10 +2996,15 @@
     return false;
   }
 
+  /** 밖으로 내보낼 HTML — 편집기 전용 표시(잠금 등)를 모두 걷어낸 깨끗한 코드 */
+  function exportHTML() {
+    return codeInput.value.replace(/\s+data-lh-lock=""/g, "");
+  }
+
   async function copyCode() {
     if (!requireContent()) return;
     try {
-      await navigator.clipboard.writeText(codeInput.value);
+      await navigator.clipboard.writeText(exportHTML());
       toast("HTML 코드를 복사했어요", "content_copy");
     } catch (_) {
       codeInput.select();
@@ -2610,7 +3015,8 @@
 
   async function shareCode() {
     if (!requireContent()) return;
-    const file = new File([codeInput.value], "live-html.html", { type: "text/html" });
+    const shared = exportHTML();
+    const file = new File([shared], "live-html.html", { type: "text/html" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: "Live HTML" });
@@ -2620,7 +3026,7 @@
       }
     }
     try {
-      await navigator.clipboard.writeText(codeInput.value);
+      await navigator.clipboard.writeText(shared);
       toast("공유를 지원하지 않아 코드를 복사했어요", "content_copy");
     } catch (_) {
       toast("공유를 지원하지 않는 브라우저예요", "error", true);
@@ -2642,7 +3048,7 @@
   }
 
   function downloadHTML() {
-    downloadBlob(new Blob([codeInput.value], { type: "text/html;charset=utf-8" }), exportBaseName() + ".html");
+    downloadBlob(new Blob([exportHTML()], { type: "text/html;charset=utf-8" }), exportBaseName() + ".html");
     toast("HTML 파일을 저장했어요", "download_done");
   }
 
@@ -3020,7 +3426,7 @@
     } finally {
       dlPngBtn.disabled = false;
       dlPngLabel.textContent = "PNG 저장";
-      refreshPageMarkers();
+      refreshPagesUI();
     }
   });
 
@@ -3089,7 +3495,8 @@
         duplicateSelected();
       }
     } else if (e.key === "Escape") {
-      if (!fontPanel.hidden) closeFontPanel();
+      if (!morePanel.hidden) closeMorePanel();
+      else if (!fontPanel.hidden) closeFontPanel();
       else if (!effectPanel.hidden) closeEffectPanel();
       else if (!fillPanel.hidden) closeFillPanel();
       else if (!stylePanel.hidden) closeStylePanel();
@@ -3520,7 +3927,7 @@
     } catch (_) {
       return null;
     } finally {
-      refreshPageMarkers();
+      refreshPagesUI();
     }
   }
 
@@ -4018,7 +4425,20 @@
   });
   if (location.hash === "#admin") setTimeout(requestAdminAccess, 300);
 
+  /* ---- 아이콘 글꼴을 못 받아왔을 때: 리거처 원문 대신 버튼 설명을 보여 준다 ---- */
+  (function watchIconFont() {
+    if (!document.fonts || !document.fonts.ready) return;
+    const check = () => {
+      let ok = false;
+      try { ok = document.fonts.check('20px "Material Symbols Outlined"'); } catch (_) { ok = true; }
+      document.body.classList.toggle("no-iconfont", !ok);
+    };
+    document.fonts.ready.then(check).catch(() => {});
+    setTimeout(check, 3500);
+  })();
+
   /* ---------------- 초기화 ---------------- */
+  initCodePane();
   updateStat();
   let restored = false;
   try {
